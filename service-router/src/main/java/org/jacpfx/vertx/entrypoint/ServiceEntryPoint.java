@@ -29,11 +29,53 @@ public class ServiceEntryPoint extends Verticle {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     public static final String SERVICE_REGISTER_HANDLER = "services.register.handler";
     public static final String SERVICE_UNREGISTER_HANDLER = "services.unregister.handler";
+    public static final String HOST = "localhost";
+    public static final int PORT = 8080;
+    public static final int DEFAULT_SERVICE_TIMEOUT = 10000;
+    private static final String SERVICE_INFO_PATH = "/serviceInfo";
+
     private final CustomRouteMatcher routeMatcher = new CustomRouteMatcher();
     private final Set<String> registeredRoutes = new HashSet<>();
 
+    private String serviceInfoPath;
+    private String serviceRegisterPath;
+    private String serviceUnRegisterPath;
+    private String host;
+    private int port;
+    private int defaultServiceTimeout;
+
+
+    @Override
+    public void start() {
+        System.out.println("START RestEntryVerticle  THREAD: " + Thread.currentThread() + "  this:" + this);
+
+        initConfiguration(container.config());
+
+        vertx.eventBus().registerHandler(serviceRegisterPath, this::serviceRegisterHandler);
+        vertx.eventBus().registerHandler(serviceUnRegisterPath, this::serviceUnRegisterHandler);
+
+        this.container.deployVerticle("org.jacpfx.vertx.registry.ServiceRegistry");
+
+        final HttpServer server = vertx.createHttpServer();
+        routeMatcher.get(serviceInfoPath, this::registerInfoHandler);
+        routeMatcher.noMatch(handler -> handler.response().end("no route found"));
+        server.requestHandler(routeMatcher).listen(port, host);
+
+
+    }
+
+    private void initConfiguration(JsonObject config) {
+        serviceInfoPath = config.getString("serviceInfoPath", SERVICE_INFO_PATH);
+        serviceRegisterPath = config.getString("serviceRegisterPath", SERVICE_REGISTER_HANDLER);
+        serviceUnRegisterPath = config.getString("serviceUnRegisterPath", SERVICE_UNREGISTER_HANDLER);
+        host = config.getString("host", HOST);
+        port = config.getInteger("port", PORT);
+        defaultServiceTimeout = config.getInteger("defaultServiceTimeout", DEFAULT_SERVICE_TIMEOUT);
+    }
+
     /**
      * Unregister service from route
+     *
      * @param message
      */
     private void serviceUnRegisterHandler(final Message<JsonObject> message) {
@@ -47,60 +89,93 @@ public class ServiceEntryPoint extends Verticle {
         });
     }
 
+    /**
+     * Register a service route
+     *
+     * @param message
+     */
     private void serviceRegisterHandler(Message<JsonObject> message) {
         final JsonObject info = message.body();
         final EventBus eventBus = vertx.eventBus();
-        JSONTool.getObjectListFromArray(info.getArray("operations")).forEach(operation -> {
-
-                    final String type = operation.getString("type");
-                    final String url = operation.getString("url");
-                    final JsonArray mimes = operation.getArray("mime");
-                    if (!registeredRoutes.contains(url)) {
-                        registeredRoutes.add(url);
-
-                        switch (Type.valueOf(type)) {
-                            case REST_GET:
-                                routeMatcher.get(url, request -> {
-                                    eventBus.
-                                            sendWithTimeout(
+        JSONTool.getObjectListFromArray(info.getArray("operations")).
+                forEach(operation -> {
+                            final String type = operation.getString("type");
+                            final String url = operation.getString("url");
+                            final JsonArray mimes = operation.getArray("mime");
+                            // TODO specify timeout in service info object, so that every Service can specify his own timeout
+                            // defaultServiceTimeout =   operation.getInteger("timeout");
+                            if (!registeredRoutes.contains(url)) {
+                                registeredRoutes.add(url);
+                                switch (Type.valueOf(type)) {
+                                    case REST_GET:
+                                        routeMatcher.get(url, request -> {
+                                            handleRestRequest(eventBus,
+                                                    request,
                                                     url,
                                                     gson.toJson(getParameterEntity(request.params())),
-                                                    10000,
-                                                    event -> {
-                                                        if (mimes != null && mimes.toList().size() > 0)
-                                                            request.response().putHeader("content-type", JsonObject.class.cast(mimes.get(0)).encode());
-                                                        handleRESTEvent(event, request);
-                                                    });
-                                });
-                                break;
-                            case REST_POST:
-                                routeMatcher.post(url, request -> {
-                                    eventBus.
-                                            sendWithTimeout(
+                                                    mimes,
+                                                    defaultServiceTimeout);
+                                        });
+                                        break;
+                                    case REST_POST:
+                                        routeMatcher.post(url, request -> {
+                                            handleRestRequest(eventBus,
+                                                    request,
                                                     url,
                                                     gson.toJson(getParameterEntity(request.params())),
-                                                    10000,
-                                                    event -> {
-                                                        if (mimes != null && mimes.toList().size() > 0)
-                                                            request.response().putHeader("content-type", JsonObject.class.cast(mimes.get(0)).encode());
-                                                        handleRESTEvent(event, request);
-                                                    });
-                                });
-                                break;
-                            case EVENTBUS:
-                                break;
-                            case WEBSOCKET:
-                                break;
-                            default:
+                                                    mimes,
+                                                    defaultServiceTimeout);
+                                        });
+                                        break;
+                                    case EVENTBUS:
+                                        break;
+                                    case WEBSOCKET:
+                                        break;
+                                    default:
 
 
+                                }
+                            }
                         }
-                    }
-                }
-        );
+                );
 
     }
 
+    /**
+     * handles REST requests
+     *
+     * @param eventBus
+     * @param request
+     * @param url
+     * @param parameters
+     * @param mimes
+     * @param timeout
+     */
+    private void handleRestRequest(final EventBus eventBus,
+                                   HttpServerRequest request,
+                                   final String url,
+                                   final String parameters,
+                                   final JsonArray mimes,
+                                   final int timeout) {
+        eventBus.
+                sendWithTimeout(
+                        url,
+                        parameters,
+                        timeout,
+                        event -> {
+                            if (mimes != null && mimes.toList().size() > 0)
+                                request.response().putHeader("content-type", JsonObject.class.cast(mimes.get(0)).encode());
+                            handleRESTEvent(event, request);
+                        });
+    }
+
+
+    /**
+     * handles REST events (POST,GET,...)
+     *
+     * @param event
+     * @param request
+     */
     private void handleRESTEvent(AsyncResult<Message<Object>> event, HttpServerRequest request) {
         if (event.succeeded()) {
             final Object result = event.result().body();
@@ -113,25 +188,10 @@ public class ServiceEntryPoint extends Verticle {
             }
 
         } else {
-
             request.response().end("error");
         }
     }
 
-    @Override
-    public void start() {
-        System.out.println("START RestEntryVerticle  THREAD: " + Thread.currentThread() + "  this:" + this);
-
-        vertx.eventBus().registerHandler(SERVICE_REGISTER_HANDLER, this::serviceRegisterHandler);
-        vertx.eventBus().registerHandler(SERVICE_UNREGISTER_HANDLER, this::serviceUnRegisterHandler);
-
-        HttpServer server = vertx.createHttpServer();
-        routeMatcher.get("/serviceInfo", this::registerInfoHandler);
-        routeMatcher.noMatch(handler -> handler.response().end("no route found"));
-        server.requestHandler(routeMatcher).listen(8080, "localhost");
-
-        this.container.deployVerticle("org.jacpfx.vertx.registry.ServiceRegistry");
-    }
 
     private void registerInfoHandler(HttpServerRequest request) {
         request.response().putHeader("content-type", "text/json");
@@ -140,6 +200,7 @@ public class ServiceEntryPoint extends Verticle {
         });
     }
 
+    // TODO change to JsonObject
     private Parameter<String> getParameterEntity(final MultiMap params) {
         final List<Parameter<String>> parameters = params.
                 entries().
