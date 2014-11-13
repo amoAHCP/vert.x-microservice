@@ -1,4 +1,4 @@
-package org.jacpfx.vertx.entrypoint;
+package org.jacpfx.vertx.util;
 
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.http.HttpServerRequest;

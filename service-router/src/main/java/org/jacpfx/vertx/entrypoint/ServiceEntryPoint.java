@@ -6,6 +6,7 @@ import org.jacpfx.common.JSONTool;
 import org.jacpfx.common.Parameter;
 import org.jacpfx.common.Type;
 import org.jacpfx.common.TypeTool;
+import org.jacpfx.vertx.util.CustomRouteMatcher;
 import org.vertx.java.core.AsyncResult;
 import org.vertx.java.core.Handler;
 import org.vertx.java.core.MultiMap;
@@ -76,7 +77,7 @@ public class ServiceEntryPoint extends Verticle {
     /**
      * Unregister service from route
      *
-     * @param message
+     * @param message the eventbus message for unregistering the service
      */
     private void serviceUnRegisterHandler(final Message<JsonObject> message) {
         final JsonObject info = message.body();
@@ -92,7 +93,7 @@ public class ServiceEntryPoint extends Verticle {
     /**
      * Register a service route
      *
-     * @param message
+     * @param message the eventbus message for registering the service
      */
     private void serviceRegisterHandler(Message<JsonObject> message) {
         final JsonObject info = message.body();
@@ -108,24 +109,24 @@ public class ServiceEntryPoint extends Verticle {
                                 registeredRoutes.add(url);
                                 switch (Type.valueOf(type)) {
                                     case REST_GET:
-                                        routeMatcher.get(url, request -> {
+                                        routeMatcher.get(url, request ->
                                             handleRestRequest(eventBus,
                                                     request,
                                                     url,
                                                     gson.toJson(getParameterEntity(request.params())),
                                                     mimes,
-                                                    defaultServiceTimeout);
-                                        });
+                                                    defaultServiceTimeout)
+                                        );
                                         break;
                                     case REST_POST:
-                                        routeMatcher.post(url, request -> {
+                                        routeMatcher.post(url, request ->
                                             handleRestRequest(eventBus,
                                                     request,
                                                     url,
                                                     gson.toJson(getParameterEntity(request.params())),
                                                     mimes,
-                                                    defaultServiceTimeout);
-                                        });
+                                                    defaultServiceTimeout)
+                                        );
                                         break;
                                     case EVENTBUS:
                                         break;
@@ -144,12 +145,12 @@ public class ServiceEntryPoint extends Verticle {
     /**
      * handles REST requests
      *
-     * @param eventBus
-     * @param request
-     * @param url
-     * @param parameters
-     * @param mimes
-     * @param timeout
+     * @param eventBus the vert.x event bus
+     * @param request the http request
+     * @param url the request URL
+     * @param parameters the request parameters
+     * @param mimes the service mime types
+     * @param timeout the default timeout
      */
     private void handleRestRequest(final EventBus eventBus,
                                    HttpServerRequest request,
