@@ -2,6 +2,7 @@ package org.jacpfx.integration;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import org.jacpfx.common.Parameter;
 import org.jacpfx.common.Type;
 import org.jacpfx.vertx.registry.ServiceRegistry;
 import org.junit.Assert;
@@ -27,7 +28,7 @@ import static org.vertx.testtools.VertxAssert.*;
 /**
  * Created by amo on 13.11.14.
  */
-public class ServiceEntryPointTest extends TestVerticle {
+public class ServiceEntryPointTestQueryParam extends TestVerticle {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
     @Override
@@ -57,25 +58,26 @@ public class ServiceEntryPointTest extends TestVerticle {
         return client;
     }
 
+
     @Test
-    public void testSimpleRESTGetRoute() throws InterruptedException {
+    public void testSimpleRESTGetQueryParamRoute() throws InterruptedException {
         final ConcurrentSharedMap<Object, Object> map = vertx.sharedData().getMap(ServiceRegistry.SERVICE_REGISTRY);
         int size = map.size();
         vertx.eventBus().send(ServiceRegistry.SERVICE_REGISTRY_REGISTER, getServiceInfoDesc("/testservice1"), (Handler<Message<Boolean>>) reply -> {
 
             assertEquals(true, reply.body());
             assertTrue(vertx.sharedData().getMap(ServiceRegistry.SERVICE_REGISTRY).size() == size + 1);
-            vertx.eventBus().registerHandler("/testservice1/operation1", m -> {
+            vertx.eventBus().registerHandler("/testservice1/operation2", m -> {
                 Logger logger = container.logger();
-
-                m.reply("hello");
+                final Parameter<String> params = gson.fromJson(m.body().toString(), Parameter.class);
+                m.reply(params.getValue("name"));
                 logger.info("reply to: " + m.body());
             });
-            HttpClientRequest request = getClient().get("/testservice1/operation1", new Handler<HttpClientResponse>() {
+            HttpClientRequest request = getClient().get("/testservice1/operation2?name=hallo1", new Handler<HttpClientResponse>() {
                 public void handle(HttpClientResponse resp) {
                     resp.bodyHandler(body -> {
                         System.out.println("Got a response: " + body.toString());
-                        Assert.assertEquals(body.toString(), "hello");
+                        Assert.assertEquals(body.toString(), "hallo1");
                     });
 
                     testComplete();
@@ -87,22 +89,6 @@ public class ServiceEntryPointTest extends TestVerticle {
 
     }
 
-    @Test
-    public void testNoRouteFound() throws InterruptedException {
-
-        HttpClientRequest request = getClient().get("/testservice1/operation1", new Handler<HttpClientResponse>() {
-            public void handle(HttpClientResponse resp) {
-                resp.bodyHandler(body -> {
-                    System.out.println("Got a response: " + body.toString());
-                    Assert.assertEquals(body.toString(), "no route found");
-                });
-
-                testComplete();
-            }
-        });
-        request.end();
-
-    }
 
 
 

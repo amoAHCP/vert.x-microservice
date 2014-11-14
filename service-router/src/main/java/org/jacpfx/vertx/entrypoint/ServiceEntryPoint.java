@@ -57,12 +57,17 @@ public class ServiceEntryPoint extends Verticle {
 
         this.container.deployVerticle("org.jacpfx.vertx.registry.ServiceRegistry");
 
+        initHTTPConnector();
+    }
+
+    /**
+     * start the server, attach the route matcher
+     */
+    private void initHTTPConnector() {
         final HttpServer server = vertx.createHttpServer();
         routeMatcher.get(serviceInfoPath, this::registerInfoHandler);
         routeMatcher.noMatch(handler -> handler.response().end("no route found"));
         server.requestHandler(routeMatcher).listen(port, host);
-
-
     }
 
     private void initConfiguration(JsonObject config) {
@@ -114,7 +119,7 @@ public class ServiceEntryPoint extends Verticle {
                                                     request,
                                                     url,
                                                     gson.toJson(getParameterEntity(request.params())),
-                                                    mimes,
+                                                    JSONTool.getObjectListFromArray(mimes),
                                                     defaultServiceTimeout)
                                         );
                                         break;
@@ -124,7 +129,7 @@ public class ServiceEntryPoint extends Verticle {
                                                     request,
                                                     url,
                                                     gson.toJson(getParameterEntity(request.params())),
-                                                    mimes,
+                                                    JSONTool.getObjectListFromArray(mimes),
                                                     defaultServiceTimeout)
                                         );
                                         break;
@@ -156,7 +161,7 @@ public class ServiceEntryPoint extends Verticle {
                                    HttpServerRequest request,
                                    final String url,
                                    final String parameters,
-                                   final JsonArray mimes,
+                                   final List<JsonObject> mimes,
                                    final int timeout) {
         eventBus.
                 sendWithTimeout(
@@ -164,8 +169,8 @@ public class ServiceEntryPoint extends Verticle {
                         parameters,
                         timeout,
                         event -> {
-                            if (mimes != null && mimes.toList().size() > 0)
-                                request.response().putHeader("content-type", JsonObject.class.cast(mimes.get(0)).encode());
+                            if (mimes != null && mimes.size() > 0)
+                                mimes.forEach(m -> request.response().putHeader("content-type", JsonObject.class.cast(m).encode()));
                             handleRESTEvent(event, request);
                         });
     }
@@ -174,8 +179,8 @@ public class ServiceEntryPoint extends Verticle {
     /**
      * handles REST events (POST,GET,...)
      *
-     * @param event
-     * @param request
+     * @param event the async event
+     * @param request the HTTP request
      */
     private void handleRESTEvent(AsyncResult<Message<Object>> event, HttpServerRequest request) {
         if (event.succeeded()) {
@@ -196,9 +201,9 @@ public class ServiceEntryPoint extends Verticle {
 
     private void registerInfoHandler(HttpServerRequest request) {
         request.response().putHeader("content-type", "text/json");
-        vertx.eventBus().send("services.registry.get", "xyz", (Handler<Message<JsonObject>>) h -> {
-            request.response().end(h.body().encodePrettily());
-        });
+        vertx.eventBus().send("services.registry.get", "xyz", (Handler<Message<JsonObject>>) h ->
+            request.response().end(h.body().encodePrettily())
+        );
     }
 
     // TODO change to JsonObject
