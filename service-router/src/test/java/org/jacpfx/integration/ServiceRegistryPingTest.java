@@ -19,7 +19,7 @@ import static org.vertx.testtools.VertxAssert.*;
 /**
  * Created by amo on 13.11.14.
  */
-public class ServiceRegistryTest extends TestVerticle {
+public class ServiceRegistryPingTest extends TestVerticle {
 
     @Override
     public void start() {
@@ -37,18 +37,7 @@ public class ServiceRegistryTest extends TestVerticle {
         });
     }
 
-    @Test
-    public void testRegisterVerticle() throws InterruptedException {
-        vertx.eventBus().send(ServiceRegistry.SERVICE_REGISTRY_REGISTER, getServiceInfoDesc("/testservice1"), (Handler<Message<Boolean>>)reply->{
 
-                assertEquals(true, reply.body());
-
-                final ConcurrentSharedMap<Object, Object> map = vertx.sharedData().getMap(ServiceRegistry.SERVICE_REGISTRY);
-                assertTrue(map.size()>=1);
-                testComplete();
-
-        });
-    }
 
     @Test
     public void testCheckPingFromRegistry() {

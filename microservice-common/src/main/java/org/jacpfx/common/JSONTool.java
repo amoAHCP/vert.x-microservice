@@ -33,6 +33,7 @@ public class JSONTool {
 
     public static List<JsonObject> getObjectListFromArray(final JsonArray jsonarray) {
         List<JsonObject> l = new ArrayList<>();
+        if(jsonarray==null) return l;
         for(int i=0; i<jsonarray.size();i++) {
             l.add(jsonarray.get(i));
         }
