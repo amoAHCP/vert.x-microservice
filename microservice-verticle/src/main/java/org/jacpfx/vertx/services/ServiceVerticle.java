@@ -2,15 +2,14 @@ package org.jacpfx.vertx.services;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.eventbus.Message;
+import io.vertx.core.json.JsonArray;
+import io.vertx.core.json.JsonObject;
 import org.jacpfx.common.JSONTool;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Parameter;
 import org.jacpfx.common.TypeTool;
-import org.vertx.java.core.eventbus.Message;
-import org.vertx.java.core.json.JsonArray;
-import org.vertx.java.core.json.JsonObject;
-import org.vertx.java.core.logging.Logger;
-import org.vertx.java.platform.Verticle;
 
 import javax.ws.rs.*;
 import java.lang.annotation.Annotation;
@@ -26,7 +25,7 @@ import java.util.stream.Stream;
  * Extend a service verticle to provide pluggable sevices for vet.x microservice project
  * Created by amo on 28.10.14.
  */
-public abstract class ServiceVerticle extends Verticle {
+public abstract class ServiceVerticle extends AbstractVerticle {
 
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private JsonObject descriptor;
@@ -39,15 +38,15 @@ public abstract class ServiceVerticle extends Verticle {
         // register service at service registry
         vertx.eventBus().send("services.registry.register", descriptor);
         // register info handler
-        vertx.eventBus().registerHandler(serviceName() + "-info", this::info);
+        vertx.eventBus().consumer(serviceName() + "-info", this::info);
     }
 
     private JsonObject createInfoObject(List<JsonObject> operations) {
         final JsonObject tmp = new JsonObject();
         final JsonArray operationsArray = new JsonArray();
-        operations.forEach(op -> operationsArray.addObject(op));
-        tmp.putString("serviceName", serviceName());
-        tmp.putArray("operations", operationsArray);
+        operations.forEach(op -> operationsArray.add(op));
+        tmp.put("serviceName", serviceName());
+        tmp.put("operations", operationsArray);
 
         return tmp;
     }
@@ -69,15 +68,16 @@ public abstract class ServiceVerticle extends Verticle {
                         throw new MissingResourceException("missing OperationType ", this.getClass().getName(), "");
                     final String[] mimeTypes = mime != null ? mime.value() : null;
                     final String url = serviceName().concat(path.value());
-                    final List<String> parameters = getQueryParametersInMethod(method.getParameterAnnotations());
-                    parameters.addAll(getPathParametersInMethod(method.getParameterAnnotations()));
+                    final List<String> parameters = new ArrayList<>();
 
                     switch (opType.value()) {
                         case REST_POST:
-                            vertx.eventBus().registerHandler(url, handler -> genericRESTHandler(handler, method));
+                            parameters.addAll(getAllRESTParameters(method));
+                            vertx.eventBus().consumer(url, handler -> genericRESTHandler(handler, method));
                             break;
                         case REST_GET:
-                            vertx.eventBus().registerHandler(url, handler -> genericRESTHandler(handler, method));
+                            parameters.addAll(getAllRESTParameters(method));
+                            vertx.eventBus().consumer(url, handler -> genericRESTHandler(handler, method));
                             break;
                         case WEBSOCKET:
                             break;
@@ -91,9 +91,22 @@ public abstract class ServiceVerticle extends Verticle {
     }
 
     /**
+     * Retrieving a list of all possible REST parameters in method signature
+     * @param method the method to analyse
+     * @return a List of all available parameters on method
+     */
+    private List<String> getAllRESTParameters(Method method) {
+        final List<String> parameters = getQueryParametersInMethod(method.getParameterAnnotations());
+        parameters.addAll(getPathParametersInMethod(method.getParameterAnnotations()));
+        parameters.addAll(getFormParamParametersInMethod(method.getParameterAnnotations()));
+        return parameters;
+
+    }
+
+    /**
      * Returns all query parameters in a method, this is only for REST methods
      *
-     * @param parameterAnnotations
+     * @param parameterAnnotations an array with all parameter annotations
      * @return a list of QueryParameters in a method
      */
     private List<String> getQueryParametersInMethod(final Annotation[][] parameterAnnotations) {
@@ -110,7 +123,7 @@ public abstract class ServiceVerticle extends Verticle {
     /**
      * Returns all path parameters in a method, this is only for REST methods
      *
-     * @param parameterAnnotations
+     * @param parameterAnnotations an array with all parameter annotations
      * @return a list of PathParameters in a method
      */
     private List<String> getPathParametersInMethod(final Annotation[][] parameterAnnotations) {
@@ -119,6 +132,23 @@ public abstract class ServiceVerticle extends Verticle {
             parameters.addAll(Stream.of(parameterAnnotation).
                     filter(pa -> PathParam.class.isAssignableFrom(pa.getClass())).
                     map(parameter -> PathParam.class.cast(parameter).value()).
+                    collect(Collectors.toList()));
+        }
+        return parameters;
+    }
+
+    /**
+     * Returns all FormParam parameters in a method, this is only for REST methods
+     *
+     * @param parameterAnnotations an array with all parameter annotations
+     * @return a list of PathParameters in a method
+     */
+    private List<String> getFormParamParametersInMethod(final Annotation[][] parameterAnnotations) {
+        final List<String> parameters = new ArrayList<>();
+        for (Annotation[] parameterAnnotation : parameterAnnotations) {
+            parameters.addAll(Stream.of(parameterAnnotation).
+                    filter(pa -> FormParam.class.isAssignableFrom(pa.getClass())).
+                    map(parameter -> FormParam.class.cast(parameter).value()).
                     collect(Collectors.toList()));
         }
         return parameters;
@@ -173,8 +203,7 @@ public abstract class ServiceVerticle extends Verticle {
                 final Annotation annotation = parameterAnnotation[0];
                 putQueryParameter(parameters, i, annotation, params);
                 putPathParameter(parameters, i, annotation, params);
-
-
+                putFormParameter(parameters, i, annotation, params);
             } else {
                 final Class typeClass = parameterTypes[i];
                 if (typeClass.isAssignableFrom(m.getClass())) {
@@ -198,12 +227,17 @@ public abstract class ServiceVerticle extends Verticle {
         }
     }
 
+    private void putFormParameter(Object[] parameters, int counter, Annotation annotation, final Parameter<String> params) {
+        if (FormParam.class.isAssignableFrom(annotation.getClass())) {
+            parameters[counter] = (params.getValue(FormParam.class.cast(annotation).value()));
+        }
+    }
+
 
     private void info(Message m) {
-        Logger logger = container.logger();
 
         m.reply(getServiceDescriptor());
-        logger.info("reply to: " + m.body());
+        System.out.println("reply to: " + m.body());
     }
 
 
@@ -222,6 +256,6 @@ public abstract class ServiceVerticle extends Verticle {
     }
 
     private JsonObject getConfig() {
-        return container != null ? container.config() : new JsonObject();
+        return context != null ? context.config() : new JsonObject();
     }
 }

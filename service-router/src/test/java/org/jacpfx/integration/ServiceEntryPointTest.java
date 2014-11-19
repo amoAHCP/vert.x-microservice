@@ -2,35 +2,15 @@ package org.jacpfx.integration;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import org.jacpfx.common.Type;
-import org.jacpfx.vertx.registry.ServiceRegistry;
-import org.junit.Assert;
-import org.junit.Test;
-import org.vertx.java.core.Handler;
-import org.vertx.java.core.Vertx;
-import org.vertx.java.core.VertxFactory;
-import org.vertx.java.core.eventbus.Message;
-import org.vertx.java.core.http.HttpClient;
-import org.vertx.java.core.http.HttpClientRequest;
-import org.vertx.java.core.http.HttpClientResponse;
-import org.vertx.java.core.json.JsonArray;
-import org.vertx.java.core.json.JsonObject;
-import org.vertx.java.core.logging.Logger;
-import org.vertx.java.core.shareddata.ConcurrentSharedMap;
-import org.vertx.testtools.TestVerticle;
-
-import java.util.ArrayList;
-import java.util.List;
-
-import static org.vertx.testtools.VertxAssert.*;
+import io.vertx.test.core.VertxTestBase;
 
 /**
  * Created by amo on 13.11.14.
  */
-public class ServiceEntryPointTest extends TestVerticle {
+public class ServiceEntryPointTest extends VertxTestBase {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
-    @Override
+    /*@Override
     public void start() {
         // Make sure we call initialize() - this sets up the assert stuff so assert functionality works correctly
         initialize();
@@ -124,5 +104,5 @@ public class ServiceEntryPointTest extends TestVerticle {
         result.add(org.jacpfx.common.JSONTool.createOperationObject(serviceName + "/operation3:value", Type.REST_GET.name(), new String[]{"text"},"value"));
         result.add(org.jacpfx.common.JSONTool.createOperationObject(serviceName + "/operation4", Type.REST_GET.name(), new String[]{"text"}));
         return result;
-    }
+    }*/
 }

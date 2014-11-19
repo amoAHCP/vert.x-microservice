@@ -2,6 +2,7 @@ package org.jacpfx.common;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Created by amo on 27.10.14.
@@ -32,7 +33,8 @@ public class Parameter<T> {
 
     public T getValue(String name) {
         if(this.name!=null && this.name.equals(name)) return this.value;
-        return all.stream().filter(p->p.getName().equals(name)).findFirst().get().getValue();
+        final Optional<Parameter<T>> first = all.stream().filter(p -> p.getName().equals(name)).findFirst();
+        return first.isPresent()?first.get().getValue():null;
     }
 
     public List<Parameter<T>> getAll() {
