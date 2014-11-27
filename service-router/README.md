@@ -7,3 +7,5 @@ messages with `pong!`.
 
 This example also shows you how to write tests in Java, Groovy, Ruby and Python
 
+[![Build Status](https://travis-ci.org/amoAHCP/vert.x-microservice.svg)](https://travis-ci.org/amoAHCP/vert.x-microservice)
+
