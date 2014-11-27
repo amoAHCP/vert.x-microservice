@@ -66,18 +66,12 @@
         <url>git@github.com:amoAHCP/vert.x-microservice.git</url>
         <tag>vert.x-microservice-parent</tag>
     </scm>
-    <profiles>
-        <profile>
-            <id>all</id>
-            <modules>
-                <module>microservice-common</module>
-                <module>service-router</module>
-                <module>microservice-verticle</module>
 
-            </modules>
-        </profile>
-
-    </profiles>
+    <modules>
+        <module>microservice-common</module>
+        <module>service-router</module>
+        <module>microservice-verticle</module>
+    </modules>
 
     <repositories>
         <repository>
