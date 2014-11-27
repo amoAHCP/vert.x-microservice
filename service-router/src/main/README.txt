@@ -1,6 +1,9 @@
-Put any Java or Groovy classes used in your module in the java or groovy directories.
+MainClass: io.vertx.core.Starter
 
-Put any other resources that you want included in your module in the resources directory, this includes any
-JavaScript, Ruby, Python, Groovy or CoffeeScript scripts or any other stuff you want in your module.
+Program arguments: run org.jacpfx.vertx.entrypoint.ServiceEntryPoint -instances 1 -cluster
 
-The mod.json file also goes in the resources directory so it's copied over too.
+
+WorkingDirectory: ...vert.x-microservice/service-router
+
+
+Classpath of module: service-router
