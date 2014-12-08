@@ -16,7 +16,7 @@
     <orderEntry type="library" name="Maven: io.vertx:vertx-hazelcast:3.0.0-SNAPSHOT" level="project" />
     <orderEntry type="library" name="Maven: com.hazelcast:hazelcast:3.3.3" level="project" />
     <orderEntry type="library" name="Maven: com.eclipsesource.minimal-json:minimal-json:0.9.1" level="project" />
-    <orderEntry type="library" name="Maven: io.vertx:vertx-core:3.0.0-SNAPSHOT" level="project" />
+    <orderEntry type="module" module-name="vertx-core" />
     <orderEntry type="library" name="Maven: io.netty:netty-all:4.0.24.Final" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-core:2.4.3" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-databind:2.4.3" level="project" />
@@ -26,7 +26,7 @@
     <orderEntry type="library" name="Maven: junit:junit:4.11" level="project" />
     <orderEntry type="library" name="Maven: org.hamcrest:hamcrest-core:1.3" level="project" />
     <orderEntry type="library" name="Maven: io.vertx:codegen:sources:1.0-SNAPSHOT" level="project" />
-    <orderEntry type="library" name="Maven: io.vertx:vertx-core:sources:3.0.0-SNAPSHOT" level="project" />
+    <orderEntry type="module" module-name="vertx-core" />
     <orderEntry type="library" name="Maven: log4j:log4j:1.2.16" level="project" />
     <orderEntry type="library" name="Maven: org.slf4j:slf4j-api:1.6.2" level="project" />
     <orderEntry type="library" name="Maven: org.mvel:mvel2:2.2.0.Final" level="project" />
@@ -34,6 +34,6 @@
     <orderEntry type="library" name="Maven: io.vertx:service-proxy:3.0.0-SNAPSHOT" level="project" />
     <orderEntry type="library" name="Maven: io.vertx:ext-sockjs:3.0.0-SNAPSHOT" level="project" />
     <orderEntry type="library" name="Maven: io.vertx:vertx-service-factory:3.0.0-SNAPSHOT" level="project" />
-    <orderEntry type="library" scope="TEST" name="Maven: io.vertx:vertx-core:test-jar:tests:3.0.0-SNAPSHOT" level="project" />
+    <orderEntry type="module" module-name="vertx-core" scope="TEST" production-on-test="" />
   </component>
 </module>

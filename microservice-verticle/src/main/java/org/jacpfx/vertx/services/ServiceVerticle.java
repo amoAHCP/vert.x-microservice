@@ -3,9 +3,13 @@ package org.jacpfx.vertx.services;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import io.vertx.core.AbstractVerticle;
+import io.vertx.core.AsyncResult;
+import io.vertx.core.Handler;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.logging.Logger;
+import io.vertx.core.logging.impl.LoggerFactory;
 import org.jacpfx.common.JSONTool;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Parameter;
@@ -18,6 +22,7 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.MissingResourceException;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -26,7 +31,7 @@ import java.util.stream.Stream;
  * Created by amo on 28.10.14.
  */
 public abstract class ServiceVerticle extends AbstractVerticle {
-
+    private static final Logger log = LoggerFactory.getLogger(ServiceVerticle.class);
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private JsonObject descriptor;
     private static final String HOST_PREFIX = "";
@@ -35,8 +40,16 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     public final void start() {
         // collect all service operations in service for descriptor
         descriptor = createInfoObject(getAllOperationsInService(this.getClass().getDeclaredMethods()));
-        // register service at service registry
-        vertx.eventBus().send("services.registry.register", descriptor);
+
+        vertx.sharedData().getCounter(serviceName(),onSuccess(counter-> {
+            counter.incrementAndGet(onSuccess(val-> {
+                log.info(val);
+                if(val<=1)
+                    // register service at service registry
+                    vertx.eventBus().send("services.registry.register", descriptor);
+            }));
+        }));
+
         // register info handler
         vertx.eventBus().consumer(serviceName() + "-info", this::info);
     }
@@ -49,6 +62,17 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         tmp.put("operations", operationsArray);
 
         return tmp;
+    }
+
+    protected <T> Handler<AsyncResult<T>> onSuccess(Consumer<T> consumer) {
+        return result -> {
+            if (result.failed()) {
+                result.cause().printStackTrace();
+
+            } else {
+                consumer.accept(result.result());
+            }
+        };
     }
 
     /**

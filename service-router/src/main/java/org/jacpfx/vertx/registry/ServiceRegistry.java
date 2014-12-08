@@ -10,9 +10,14 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
 import io.vertx.core.shareddata.AsyncMap;
+import org.jacpfx.common.ServiceInfo;
+import org.jacpfx.common.ServiceInfoDecoder;
+import org.jacpfx.common.ServiceInfoHolder;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
+import java.util.TimeZone;
+import java.util.function.Consumer;
 
 /**
  * The Service registry knows all service verticles, a verticle registers here and will be traced. The registry also notify the router to add/remove routes to the services.
@@ -23,7 +28,7 @@ public class ServiceRegistry extends AbstractVerticle {
 
     private static final long DEFAULT_EXPIRATION_AGE = 5000;
     private static final long DEFAULT_TIMEOUT = 5000;
-    private static final long DEFAULT_PING_TIME = 1000;
+    private static final long DEFAULT_PING_TIME = 5000;
     private static final long DEFAULT_SWEEP_TIME = 0;
     // Our own addresses
     public static final String SERVICE_REGISTRY_EXPIRED = "services.registry.expired";
@@ -35,25 +40,22 @@ public class ServiceRegistry extends AbstractVerticle {
     public static final String SERVICE_REGISTRY_REMOVE = "services.registry.remove";
     public static final String SERVICE_REGISTRY = "services.registry";
 
-    private Map<String, Long> handlers = new HashMap<>();
 
     private long expiration_age = DEFAULT_EXPIRATION_AGE;
     private long ping_time = DEFAULT_PING_TIME;
     private long sweep_time = DEFAULT_SWEEP_TIME;
     private long timeout_time = DEFAULT_TIMEOUT;
 
+    private final ServiceInfoDecoder serviceInfoDecoder = new ServiceInfoDecoder();
+
 
     @Override
     public void start() {
-        vertx.sharedData().getClusterWideMap(SERVICE_REGISTRY, (Handler<AsyncResult<AsyncMap<String, Long>>>) event -> {
-            // handlers = event.result();
-        });
         log.info("Service registry started.");
+
         initConfiguration(getConfig());
 
         vertx.eventBus().consumer(SERVICE_REGISTRY_REGISTER, this::serviceRegister);
-        vertx.eventBus().consumer(SERVICE_REGISTRY_ADD, this::serviceAdd);
-        vertx.eventBus().consumer(SERVICE_REGISTRY_REMOVE, this::serviceRemove);
         vertx.eventBus().consumer(SERVICE_REGISTRY_GET, this::getServicesInfo);
         pingService();
     }
@@ -67,85 +69,153 @@ public class ServiceRegistry extends AbstractVerticle {
     }
 
     private void getServicesInfo(Message<JsonObject> message) {
-        final JsonArray all = new JsonArray();
-        handlers.keySet().forEach(handler -> all.add(new JsonObject(handler)));
-        message.reply(new JsonObject().put("services", all));
+        // TODO add locking
+        log.info("Register: " + message.body());
+        this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
+                        resultMap.get("serviceHolder", onSuccess(resultHolder -> {
+                            if (resultHolder != null) {
+                                message.reply(resultHolder.getServiceInfo());
+                            } else {
+                                message.reply(new JsonObject().put("services", new JsonArray()));
+                            }
+                        }))
+        ));
     }
 
+    protected <T> Handler<AsyncResult<T>> onSuccess(Consumer<T> consumer) {
+        return result -> {
+            if (result.failed()) {
+                result.cause().printStackTrace();
 
-    private void serviceRegister(Message<JsonObject> message) {
-        final String encoded = message.body().encode();
-        if (!handlers.containsKey(encoded)) {
-            handlers.put(encoded, System.currentTimeMillis());
-            vertx.eventBus().publish(SERVICE_REGISTRY_ADD, message.body());
-            vertx.eventBus().publish("services.register.handler", message.body());
-            log.info("EventBus registered address: " + message.body());
+            } else {
+                consumer.accept(result.result());
+            }
+        };
+    }
 
-        }
+    private void serviceRegister(final Message<JsonObject> message) {
+        // TODO add locking
+        log.info("Register: " + message.body());
+        this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap -> {
+                    log.info("got map");
+                    resultMap.get("serviceHolder", onSuccess(resultHolder -> {
+                        log.info("got result holder");
+                        if (resultHolder != null) {
+                            updateExistingEntry(resultMap, message, resultHolder);
+                        } else {
+                            createNewEntry(resultMap, message, new ServiceInfoHolder());
+                        }
+                    }));
+                }
+        ));
 
     }
 
-    private void serviceAdd(Message<JsonObject> message) {
-        final String encoded = message.body().encode();
-        if (!handlers.containsKey(encoded)) {
-            handlers.put(encoded, System.currentTimeMillis());
-            log.info("EventBus add address: " + message.body());
-
-        }
-
+    private void updateExistingEntry(final AsyncMap resultMap, final Message<JsonObject> message, final ServiceInfoHolder holder) {
+        final ServiceInfo info = ServiceInfo.buildFromJson(message.body());
+        info.setLastConnection(getDateStamp());
+        holder.add(info);
+        log.info("update result holder");
+        resultMap.replace("serviceHolder", holder, onSuccess(s -> {
+            publishToEntryPoint(info);
+            log.info("Register REPLACE: " + message.body());
+        }));
     }
-    private void serviceRemove(Message<JsonObject> message) {
-        final String encoded = message.body().encode();
-        if (handlers.containsKey(encoded)) {
-            handlers.remove(encoded);
-            message.reply(true);
-            log.info("EventBus remove address: " + message.body());
 
-        }
-
+    private void createNewEntry(final AsyncMap resultMap, final Message<JsonObject> message, final ServiceInfoHolder holder) {
+        final ServiceInfo info = ServiceInfo.buildFromJson(message.body());
+        info.setLastConnection(getDateStamp());
+        holder.add(info);
+        log.info("add result holder");
+        resultMap.put("serviceHolder", holder, onSuccess(s -> {
+            publishToEntryPoint(info);
+            log.info("Register ADD: " + message.body());
+        }));
     }
+
+    private void publishToEntryPoint(ServiceInfo info) {
+        vertx.eventBus().publish("services.register.handler", info);
+    }
+
 
     private void pingService() {
-        vertx.setPeriodic(ping_time, timerID -> {
-            final long expired = System.currentTimeMillis() - expiration_age;
+        vertx.sharedData().getCounter("registry-timer-counter", onSuccess(counter -> counter.incrementAndGet(onSuccess(val -> {
+            log.info(val);
+            if (val <= 1) {
+                vertx.setPeriodic(ping_time, timerID -> this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
+                                resultMap.get("serviceHolder", onSuccess(holder -> {
+                                    log.info("get Holder " + holder + " this:" + this);
+                                    if (holder != null) {
+                                        holder.getAll().forEach(this::pingService);
 
-            handlers.
-                    entrySet().
-                    stream().
-                    forEach(entry -> {
-                        if ((entry.getValue() == null)
-                                || (entry.getValue() < expired)) {
-                            // vertx's SharedMap instances returns a copy internally, so we must remove by hand
-                            final JsonObject info = new JsonObject(entry.getKey());
-                            final String serviceName = info.getString("serviceName");
+                                    }
 
-                            vertx.
-                                    eventBus().send(
-                                    serviceName + "-info",
-                                    "ping",
-                                    new DeliveryOptions().setSendTimeout(timeout_time),
-                                    (Handler<AsyncResult<Message<JsonObject>>>) event -> {
-                                        if (event.succeeded()) {
-                                            log.info("ping: " + serviceName);
-                                        } else {
-                                            log.info("ping error: " + serviceName);
-                                            unregisterServiceAtRouter(info);
-                                        }
-                                    });
+                                }))
+                )));
+            }
+        }))));
 
-                        }
-                    });
-
-        });
     }
 
-    private void unregisterServiceAtRouter(final JsonObject info) {
-        handlers.remove(info.encode());
-        vertx.eventBus().publish(SERVICE_REGISTRY_REMOVE, info);
-        vertx.eventBus().publish("services.unregister.handler", info);
+    private void pingService(final ServiceInfo info) {
+        final String serviceName = info.getServiceName();
+
+        vertx.
+                eventBus().send(
+                serviceName + "-info",
+                "ping",
+                new DeliveryOptions().setSendTimeout(timeout_time),
+                (Handler<AsyncResult<Message<JsonObject>>>) event -> {
+                    if (event.succeeded()) {
+                        info.setLastConnection(getDateStamp());
+                        updateServiceInfo(info);
+                        log.info("ping: " + serviceName);
+                    } else {
+                        log.info("ping error: " + serviceName);
+                        unregisterServiceAtRouter(info);
+                    }
+                });
+    }
+
+    private void updateServiceInfo(final ServiceInfo info) {
+        this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
+                        resultMap.get("serviceHolder", onSuccess(holder -> {
+                            holder.replace(info);
+                            resultMap.replace("serviceHolder", holder, onSuccess(s -> log.info("update services: ")));
+                        }))
+        ));
+
+
+    }
+
+    private void unregisterServiceAtRouter(final ServiceInfo info) {
+        this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
+                        resultMap.get("serviceHolder", onSuccess(holder -> {
+                            holder.remove(info);
+                            resultMap.replace("serviceHolder", holder, t -> {
+                                if (t.succeeded()) {
+                                    vertx.sharedData().getCounter(info.getServiceName(), onSuccess(counter -> counter.get(onSuccess(c -> {
+                                        counter.compareAndSet(c, 0, onSuccess(val -> {
+                                            vertx.eventBus().publish("services.unregister.handler", info);
+                                        }));
+                                    }))));
+
+                                }
+                            });
+                        }))
+        ));
+
+
     }
 
     private JsonObject getConfig() {
         return context != null ? context.config() : new JsonObject();
+    }
+
+
+    private String getDateStamp() {
+        SimpleDateFormat timeFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
+        timeFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
+        return timeFormat.format(Calendar.getInstance().getTime());
     }
 }
