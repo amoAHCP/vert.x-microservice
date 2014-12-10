@@ -10,15 +10,13 @@ import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
-import org.jacpfx.common.JSONTool;
-import org.jacpfx.common.OperationType;
+import org.jacpfx.common.*;
 import org.jacpfx.common.Parameter;
-import org.jacpfx.common.TypeTool;
 
 import javax.ws.rs.*;
+import java.io.IOException;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
+import java.lang.reflect.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.MissingResourceException;
@@ -104,6 +102,8 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                             vertx.eventBus().consumer(url, handler -> genericRESTHandler(handler, method));
                             break;
                         case WEBSOCKET:
+                            parameters.addAll(getWSParameter(method));
+                            vertx.eventBus().consumer(url, handler -> genericWSHandler(handler, method));
                             break;
                         case EVENTBUS:
                             break;
@@ -125,6 +125,18 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         parameters.addAll(getFormParamParametersInMethod(method.getParameterAnnotations()));
         return parameters;
 
+    }
+
+    /**
+     * Retrieving a list (note only one parameter is allowed) of all possible ws method paramaters
+     * @param method
+     * @return a List of all available parameters on method
+     */
+    private List<String> getWSParameter(Method method) {
+        final Class<?>[] parameterTypes = method.getParameterTypes();
+        final List<Class> classes = Stream.of(parameterTypes).filter(c -> !c.equals(MessageReply.class)).collect(Collectors.toList());
+        if(classes.size()>1) throw new IllegalArgumentException("only one parameter is allowed");
+        return classes.stream().map(c->c.getName()).collect(Collectors.toList());
     }
 
     /**
@@ -201,6 +213,49 @@ public abstract class ServiceVerticle extends AbstractVerticle {
             m.fail(200, e.getMessage());
         }
     }
+    /**
+     * executes a requested Service Method in ServiceVerticle
+     *
+     * @param m
+     * @param method
+     */
+    private void genericWSHandler(Message m, Method method) {
+        try {
+            final Object replyValue = method.invoke(this, invokeWSParameters(m, method));
+            // TODO ws services should not have a reply value!!
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+            m.fail(200, e.getMessage());
+        } catch (InvocationTargetException e) {
+            m.fail(200, e.getMessage());
+        }
+    }
+
+    private Object[] invokeWSParameters(Message m, Method method) {
+        final Parameter<byte[]> params = getObjectParameter(m);
+        final byte[] myParameter = params.getValue("ws.default.param");
+        final java.lang.reflect.Parameter[] parameters = method.getParameters();
+        final Object[] parameterResult = new Object[parameters.length];
+        int i = 0;
+        for(java.lang.reflect.Parameter p :parameters) {
+             if(p.getType().equals(MessageReply.class)) {
+                 parameterResult[i] = new MessageReply(m);
+             }  else {
+                 try {
+                     parameterResult[i] = p.getType().cast(Serializer.deserialize(myParameter)) ;
+                 } catch (IOException e) {
+                     e.printStackTrace();
+                 } catch (ClassNotFoundException e) {
+                     e.printStackTrace();
+                 }
+             }
+
+            i++;
+        }
+
+        return parameterResult;
+    }
+
 
     protected String serializeToJSON(final Object o) {
         return gson.toJson(o);
@@ -214,8 +269,8 @@ public abstract class ServiceVerticle extends AbstractVerticle {
      * @param method the service method
      * @return an array with all valid method parameters
      */
-    private Object[] invokePatameters(Message m, Method method) {
-        final Parameter<String> params = gson.fromJson(m.body().toString(), Parameter.class);
+    private Object[] invokePatameters(Message<byte[]> m, Method method) {
+        final Parameter<String> params=getParameterObject(m);
         final Annotation[][] parameterAnnotations = method.getParameterAnnotations();
         final Class[] parameterTypes = method.getParameterTypes();
         final Object[] parameters = new Object[parameterAnnotations.length];
@@ -237,6 +292,31 @@ public abstract class ServiceVerticle extends AbstractVerticle {
             i++;
         }
         return parameters;
+    }
+
+    private Parameter<byte[]> getObjectParameter(Message<byte[]> m) {
+        Parameter<byte[]> params=null;
+        try {
+            params = (Parameter<byte[]>) Serializer.deserialize(m.body());
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        return params;
+    }
+
+
+    private Parameter<String> getParameterObject(Message<byte[]> m) {
+        Parameter<String> params=null;
+        try {
+            params = (Parameter<String>) Serializer.deserialize(m.body());
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        return params;
     }
 
     private void putQueryParameter(Object[] parameters, int counter, Annotation annotation, final Parameter<String> params) {

@@ -1,5 +1,6 @@
 package org.jacpfx.common;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -7,7 +8,7 @@ import java.util.Optional;
 /**
  * Created by amo on 27.10.14.
  */
-public class Parameter<T> {
+public class Parameter<T> implements Serializable{
     private  List<Parameter<T>> all = new ArrayList<>();
     private String name;
     private T value;

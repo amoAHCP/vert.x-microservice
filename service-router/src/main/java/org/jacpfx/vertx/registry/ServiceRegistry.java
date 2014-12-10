@@ -11,7 +11,6 @@ import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
 import io.vertx.core.shareddata.AsyncMap;
 import org.jacpfx.common.ServiceInfo;
-import org.jacpfx.common.ServiceInfoDecoder;
 import org.jacpfx.common.ServiceInfoHolder;
 
 import java.text.SimpleDateFormat;
@@ -30,15 +29,8 @@ public class ServiceRegistry extends AbstractVerticle {
     private static final long DEFAULT_TIMEOUT = 5000;
     private static final long DEFAULT_PING_TIME = 5000;
     private static final long DEFAULT_SWEEP_TIME = 0;
-    // Our own addresses
-    public static final String SERVICE_REGISTRY_EXPIRED = "services.registry.expired";
-    public static final String SERVICE_REGISTRY_PING = "services.registry.ping";
-    public static final String SERVICE_REGISTRY_SEARCH = "services.registry.search";
     private static final String SERVICE_REGISTRY_GET = "services.registry.get";
     public static final String SERVICE_REGISTRY_REGISTER = "services.registry.register";
-    public static final String SERVICE_REGISTRY_ADD = "services.registry.add";
-    public static final String SERVICE_REGISTRY_REMOVE = "services.registry.remove";
-    public static final String SERVICE_REGISTRY = "services.registry";
 
 
     private long expiration_age = DEFAULT_EXPIRATION_AGE;
@@ -46,7 +38,6 @@ public class ServiceRegistry extends AbstractVerticle {
     private long sweep_time = DEFAULT_SWEEP_TIME;
     private long timeout_time = DEFAULT_TIMEOUT;
 
-    private final ServiceInfoDecoder serviceInfoDecoder = new ServiceInfoDecoder();
 
 
     @Override

@@ -1,7 +1,5 @@
 package org.jacpfx.vertx.entrypoint;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import io.vertx.core.*;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
@@ -13,6 +11,7 @@ import org.jacpfx.common.*;
 import org.jacpfx.vertx.util.CustomRouteMatcher;
 import org.jacpfx.vertx.util.WebSocketRepository;
 
+import java.io.IOException;
 import java.util.*;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -22,7 +21,6 @@ import java.util.stream.Stream;
  * Created by Andy Moncsek on 13.11.14.
  */
 public class ServiceEntryPoint extends AbstractVerticle {
-    private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     public static final String SERVICE_REGISTER_HANDLER = "services.register.handler";
     public static final String SERVICE_UNREGISTER_HANDLER = "services.unregister.handler";
     public static final String HOST = "localhost";
@@ -34,6 +32,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private final Set<String> registeredRoutes = new HashSet<>();
     private final WebSocketRepository repository = new WebSocketRepository();
     private final ServiceInfoDecoder serviceInfoDecoder = new ServiceInfoDecoder();
+    private final ParameterDecoder parameterDecoder = new ParameterDecoder();
 
     private String serviceInfoPath;
     private String serviceRegisterPath;
@@ -47,6 +46,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
     public void start(Future<Void> startFuture) {
         System.out.println("START RestEntryVerticle  THREAD: " + Thread.currentThread() + "  this:" + this);
         vertx.eventBus().registerDefaultCodec(ServiceInfo.class, serviceInfoDecoder);
+        vertx.eventBus().registerDefaultCodec(Parameter.class, parameterDecoder);
         initConfiguration(getConfig());
 
         vertx.eventBus().consumer(serviceRegisterPath, this::serviceRegisterHandler);
@@ -56,7 +56,6 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
         initHTTPConnector(startFuture);
     }
-
 
 
     /**
@@ -76,7 +75,6 @@ public class ServiceEntryPoint extends AbstractVerticle {
                 startFuture.fail(res.cause());
             }
         });
-
 
 
     }
@@ -124,32 +122,11 @@ public class ServiceEntryPoint extends AbstractVerticle {
                         registeredRoutes.add(url);
                         switch (Type.valueOf(type)) {
                             case REST_GET:
-                                routeMatcher.matchMethod(HttpMethod.GET, url, request ->
-                                                handleRestRequest(eventBus,
-                                                        request,
-                                                        url,
-                                                        gson.toJson(getParameterEntity(request.params())),
-                                                        Arrays.asList(mimes),
-                                                        defaultServiceTimeout)
-                                );
+                                handleRESTGetRegistration(eventBus, url, mimes);
                                 break;
                             case REST_POST:
 
-                                routeMatcher.matchMethod(HttpMethod.POST, url, request -> {
-                                            request.setExpectMultipart(true);
-                                            request.endHandler(new VoidHandler() {
-                                                public void handle() {
-                                                    final MultiMap attrs = request.formAttributes();
-                                                    handleRestRequest(eventBus,
-                                                            request,
-                                                            url,
-                                                            gson.toJson(getParameterEntity(attrs)),
-                                                            Arrays.asList(mimes),
-                                                            defaultServiceTimeout);
-                                                }
-                                            });
-                                        }
-                                );
+                                handleRESTPostRegistration(eventBus, url, mimes);
                                 break;
                             case EVENTBUS:
                                 break;
@@ -166,6 +143,45 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
     }
 
+    private void handleRESTGetRegistration(final EventBus eventBus, final String url, final String[] mimes) {
+        routeMatcher.matchMethod(HttpMethod.GET, url, request ->
+                        handleRestRequest(eventBus,
+                                request,
+                                url,
+                                getParameterEntity(request.params()),
+                                Arrays.asList(mimes),
+                                defaultServiceTimeout)
+        );
+    }
+
+    private void handleRESTPostRegistration(final EventBus eventBus, final String url, final String[] mimes) {
+        routeMatcher.matchMethod(HttpMethod.POST, url, request -> {
+                    request.setExpectMultipart(true);
+                    request.endHandler(new VoidHandler() {
+                        public void handle() {
+                            final MultiMap attrs = request.formAttributes();
+                            handleRestRequest(eventBus,
+                                    request,
+                                    url,
+                                    getParameterEntity(attrs),
+                                    Arrays.asList(mimes),
+                                    defaultServiceTimeout);
+                        }
+                    });
+                }
+        );
+    }
+
+    private byte[] getSerializedParameters(final Parameter parameters) {
+        byte[] parameter = new byte[0];
+        try {
+            parameter = Serializer.serialize(parameters);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return parameter;
+    }
+
     /**
      * handles REST requests
      *
@@ -179,28 +195,30 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private void handleRestRequest(final EventBus eventBus,
                                    HttpServerRequest request,
                                    final String url,
-                                   final String parameters,
+                                   final Parameter parameters,
                                    final List<String> mimes,
                                    final int timeout) {
         eventBus.
                 send(
                         url,
-                        parameters,
+                        getSerializedParameters(parameters),
                         new DeliveryOptions().setSendTimeout(timeout),
-                        event -> {
-                            if (mimes != null && mimes.size() > 0) {
-                                final String accept = request.headers().get("Accept");
-                                if (accept != null) {
-                                    final Optional<String> mime = mimes.stream().filter(mm -> mm.equalsIgnoreCase(accept)).findFirst();
-                                    mime.ifPresent(m -> request.response().putHeader("content-type", m));
+                        event -> createRestResponse(request, mimes, event));
+    }
 
-                                } else {
-                                    mimes.forEach(m -> request.response().putHeader("content-type", m));
-                                }
-                            }
+    private void createRestResponse(HttpServerRequest request, final List<String> mimes, AsyncResult<Message<Object>> event) {
+        if (mimes != null && mimes.size() > 0) {
+            final String accept = request.headers().get("Accept");
+            if (accept != null) {
+                final Optional<String> mime = mimes.stream().filter(mm -> mm.equalsIgnoreCase(accept)).findFirst();
+                mime.ifPresent(m -> request.response().putHeader("content-type", m));
 
-                            handleRESTEvent(event, request);
-                        });
+            } else {
+                mimes.forEach(m -> request.response().putHeader("content-type", m));
+            }
+        }
+
+        handleRESTEvent(event, request);
     }
 
 
@@ -229,7 +247,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
     private void registerInfoHandler(HttpServerRequest request) {
         request.response().putHeader("content-type", "text/json");
-        vertx.eventBus().send("services.registry.get", "xyz",(AsyncResultHandler<Message<JsonObject>>) h ->
+        vertx.eventBus().send("services.registry.get", "xyz", (AsyncResultHandler<Message<JsonObject>>) h ->
                         request.response().end(h.result().body().encodePrettily())
         );
     }
@@ -243,7 +261,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
         return new Parameter<>(parameters);
     }
 
-   private void registerWebSocketHandler(HttpServer server) {
+    private void registerWebSocketHandler(HttpServer server) {
         server.websocketHandler((serverSocket) -> {
             final String path = serverSocket.path();
             final EventBus eventBus = vertx.eventBus();
@@ -254,7 +272,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
                     System.out.println("Call");
                     serverSocket.handler(data -> {
 
-                        eventBus.send(path,"message", new DeliveryOptions().setSendTimeout(3000),message -> handleWSEvent(message,serverSocket));
+                        eventBus.send(path, "message", new DeliveryOptions().setSendTimeout(3000), message -> handleWSEvent(message, serverSocket));
 
 
                         System.out.println("DataHandler");
@@ -275,14 +293,14 @@ public class ServiceEntryPoint extends AbstractVerticle {
         httpServer.websocketHandler((serverSocket) -> {
             repository.addWebSocket(serverSocket);
             List<JsonObject> allInfos = new ArrayList<>();
-            serverSocket.handler(socket-> {
+            serverSocket.handler(socket -> {
                    /* allInfos.forEach( e->e
 
                     );*/
 
-            }) ;
+            });
             // TODO 1.) get a List of all services (PROBLEM: get list from all instances.. use shared map) 2.) iterate over each service/servicepath, register a datahandler and a send
-           // serverSocket.dataHandler(this::redirectWSMessageToBus);
+            // serverSocket.dataHandler(this::redirectWSMessageToBus);
             //serverSocket.closeHandler((close) -> handleConnectionClose(close, serverSocket));
         });
     }
@@ -290,14 +308,13 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private void serviceRegisterWSHandler(final JsonObject info) {
 
 
-
     }
 
     /**
      * handles REST events (POST,GET,...)
      *
-     * @param event   the async event
-     * @param ws the ServerWebSocket
+     * @param event the async event
+     * @param ws    the ServerWebSocket
      */
     private void handleWSEvent(AsyncResult<Message<Object>> event, ServerWebSocket ws) {
         if (event.succeeded()) {
