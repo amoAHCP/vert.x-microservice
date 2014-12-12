@@ -26,7 +26,7 @@ public class ServiceEntryPointWSBasicTest extends VertxTestBase {
     @Override
     public void setUp() throws Exception {
         super.setUp();
-        CountDownLatch latch = new CountDownLatch(1);
+      /*  CountDownLatch latch = new CountDownLatch(1);
         // Deploy the module - the System property `vertx.modulename` will contain the name of the module so you
         // don't have to hardecode it in your tests
         vertx.deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint",asyncResult ->{
@@ -37,7 +37,7 @@ public class ServiceEntryPointWSBasicTest extends VertxTestBase {
             latch.countDown();
 
         });
-        awaitLatch(latch);
+        awaitLatch(latch);*/
     }
 
 
@@ -51,30 +51,52 @@ public class ServiceEntryPointWSBasicTest extends VertxTestBase {
     }
 
 
-
     @Test
     public void getSimpleConnection() throws InterruptedException, IOException {
-        CountDownLatch latch = new CountDownLatch(1);
-        CountDownLatch latch2 = new CountDownLatch(2);
-        final WebSocket[] wsTemp = new WebSocket[1];
-        HttpClient client = getClient((ws) -> {
-            latch.countDown();
-            wsTemp[0] = ws;
-            ws.handler((data) -> {
-                System.out.println("client data handler 1:" + data);
-                assertNotNull(data.getString(0, data.length()));
-                latch2.countDown();
-            });
-        }, "/all");
+        CountDownLatch latchMain = new CountDownLatch(10);
+        Runnable r = () -> {
+            try {
+                CountDownLatch latch = new CountDownLatch(1);
+                CountDownLatch latch2 = new CountDownLatch(9);
+                final WebSocket[] wsTemp = new WebSocket[1];
+                HttpClient client = getClient((ws) -> {
+                    latch.countDown();
+                    wsTemp[0] = ws;
+                    ws.handler((data) -> {
+                        System.out.println("client data handler 1:" + new String(data.getBytes()));
+                        assertNotNull(data.getString(0, data.length()));
+                        latch2.countDown();
+                    });
+                }, "/service-REST-GET/hello");
 
-        latch.await();
 
-        assertNotNull(wsTemp[0]);
+                latch.await();
 
-        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello"));
-        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello"));
-        latch2.await();
 
-        client.close();
+              //  assertNotNull(wsTemp[0]);
+
+                wsTemp[0].writeFrame(new WebSocketFrameImpl("hello"));
+                wsTemp[0].writeFrame(new WebSocketFrameImpl("hello2"));
+                wsTemp[0].writeFrame(new WebSocketFrameImpl("hello3"));
+                latch2.await();
+                client.close();
+                latchMain.countDown();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        };
+
+        new Thread(r).start();
+        new Thread(r).start();
+        new Thread(r).start();
+        new Thread(r).start();
+        new Thread(r).start();
+        new Thread(r).start();
+        new Thread(r).start();
+        new Thread(r).start();
+        new Thread(r).start();
+        new Thread(r).start();
+
+        latchMain.await();
     }
 }

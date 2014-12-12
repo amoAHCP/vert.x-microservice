@@ -39,6 +39,14 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         // collect all service operations in service for descriptor
         descriptor = createInfoObject(getAllOperationsInService(this.getClass().getDeclaredMethods()));
 
+        registerService();
+
+        // register info handler
+        vertx.eventBus().consumer(serviceName() + "-info", this::info);
+        vertx.eventBus().consumer(serviceName() + "-reconnect", this::reconnect);
+    }
+
+    private void registerService() {
         vertx.sharedData().getCounter(serviceName(),onSuccess(counter-> {
             counter.incrementAndGet(onSuccess(val-> {
                 log.info(val);
@@ -47,9 +55,6 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                     vertx.eventBus().send("services.registry.register", descriptor);
             }));
         }));
-
-        // register info handler
-        vertx.eventBus().consumer(serviceName() + "-info", this::info);
     }
 
     private JsonObject createInfoObject(List<JsonObject> operations) {
@@ -82,36 +87,44 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     private List<JsonObject> getAllOperationsInService(final Method[] allMethods) {
         return Stream.of(allMethods).
                 filter(m -> m.isAnnotationPresent(Path.class)).
-                map(method -> {
-                    final Path path = method.getDeclaredAnnotation(Path.class);
-                    final Produces mime = method.getDeclaredAnnotation(Produces.class);
-                    final OperationType opType = method.getDeclaredAnnotation(OperationType.class);
-                    if (opType == null)
-                        throw new MissingResourceException("missing OperationType ", this.getClass().getName(), "");
-                    final String[] mimeTypes = mime != null ? mime.value() : null;
-                    final String url = serviceName().concat(path.value());
-                    final List<String> parameters = new ArrayList<>();
+                map(method -> mapServiceMethod(method)).collect(Collectors.toList());
+    }
 
-                    switch (opType.value()) {
-                        case REST_POST:
-                            parameters.addAll(getAllRESTParameters(method));
-                            vertx.eventBus().consumer(url, handler -> genericRESTHandler(handler, method));
-                            break;
-                        case REST_GET:
-                            parameters.addAll(getAllRESTParameters(method));
-                            vertx.eventBus().consumer(url, handler -> genericRESTHandler(handler, method));
-                            break;
-                        case WEBSOCKET:
-                            parameters.addAll(getWSParameter(method));
-                            vertx.eventBus().consumer(url, handler -> genericWSHandler(handler, method));
-                            break;
-                        case EVENTBUS:
-                            break;
+    private JsonObject mapServiceMethod(Method method) {
+        final Path path = method.getDeclaredAnnotation(Path.class);
+        final Produces mime = method.getDeclaredAnnotation(Produces.class);
+        final OperationType opType = method.getDeclaredAnnotation(OperationType.class);
+        if (opType == null)
+            throw new MissingResourceException("missing OperationType ", this.getClass().getName(), "");
+        final String[] mimeTypes = mime != null ? mime.value() : null;
+        final String url = serviceName().concat(path.value());
+        final List<String> parameters = new ArrayList<>();
+
+        switch (opType.value()) {
+            case REST_POST:
+                parameters.addAll(getAllRESTParameters(method));
+                vertx.eventBus().consumer(url, handler -> genericRESTHandler(handler, method));
+                break;
+            case REST_GET:
+                parameters.addAll(getAllRESTParameters(method));
+                vertx.eventBus().consumer(url, handler -> genericRESTHandler(handler, method));
+                break;
+            case WEBSOCKET:
+                parameters.addAll(getWSParameter(method));
+                vertx.eventBus().consumer(url, new Handler<Message<byte[]>>() {
+                    @Override
+                    public void handle(Message<byte[]> event) {
+                        genericWSHandler(event, method);
                     }
+                });
+                //vertx.eventBus().consumer(url, handler -> genericWSHandler(handler, method));
+                break;
+            case EVENTBUS:
+                break;
+        }
 
 
-                    return JSONTool.createOperationObject(url, opType.value().name(), mimeTypes, parameters.toArray(new String[parameters.size()]));
-                }).collect(Collectors.toList());
+        return JSONTool.createOperationObject(url, opType.value().name(), mimeTypes, parameters.toArray(new String[parameters.size()]));
     }
 
     /**
@@ -219,7 +232,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
      * @param m
      * @param method
      */
-    private void genericWSHandler(Message m, Method method) {
+    private void genericWSHandler(Message<byte[]> m, Method method) {
         try {
             final Object replyValue = method.invoke(this, invokeWSParameters(m, method));
             // TODO ws services should not have a reply value!!
@@ -231,29 +244,36 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         }
     }
 
-    private Object[] invokeWSParameters(Message m, Method method) {
-        final Parameter<byte[]> params = getObjectParameter(m);
-        final byte[] myParameter = params.getValue("ws.default.param");
+    private Object[] invokeWSParameters(Message<byte[]> m, Method method) {
+        //final Parameter<byte[]> params = getObjectParameter(m);
+        final WSDataWrapper wrapper = getWSDataWrapper(m);//params.getValue("ws.default.param");
         final java.lang.reflect.Parameter[] parameters = method.getParameters();
         final Object[] parameterResult = new Object[parameters.length];
         int i = 0;
         for(java.lang.reflect.Parameter p :parameters) {
              if(p.getType().equals(MessageReply.class)) {
-                 parameterResult[i] = new MessageReply(m);
+                 parameterResult[i] = new MessageReply(wrapper.getEndpoint(),this.vertx.eventBus());
              }  else {
-                 try {
-                     parameterResult[i] = p.getType().cast(Serializer.deserialize(myParameter)) ;
-                 } catch (IOException e) {
-                     e.printStackTrace();
-                 } catch (ClassNotFoundException e) {
-                     e.printStackTrace();
-                 }
+                 putTypedParameter(parameterResult,p,i,wrapper.getData());
              }
 
             i++;
         }
 
         return parameterResult;
+    }
+
+    private WSDataWrapper getWSDataWrapper(Message<byte[]> m) {
+        WSDataWrapper wrapper = null;
+        try {
+            wrapper = (WSDataWrapper) Serializer.deserialize(m.body());
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        return wrapper;
     }
 
 
@@ -337,11 +357,21 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         }
     }
 
+    private void putTypedParameter(final Object[] parameterResult,final java.lang.reflect.Parameter p,final int counter,final byte[] myParameter) {
+            parameterResult[counter] = new String(myParameter);//p.getType().cast(Serializer.deserialize(myParameter)) ;
+
+    }
+
 
     private void info(Message m) {
 
         m.reply(getServiceDescriptor());
         System.out.println("reply to: " + m.body());
+    }
+
+    private void reconnect(Message m) {
+
+        registerService();
     }
 
 
@@ -361,5 +391,10 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
     private JsonObject getConfig() {
         return context != null ? context.config() : new JsonObject();
+    }
+
+    // TODO add versioning to service
+    protected String getVersion() {
+        return null;
     }
 }

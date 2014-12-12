@@ -5,7 +5,6 @@ import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.*;
-import io.vertx.core.http.impl.ws.WebSocketFrameImpl;
 import io.vertx.core.json.JsonObject;
 import org.jacpfx.common.*;
 import org.jacpfx.vertx.util.CustomRouteMatcher;
@@ -46,9 +45,10 @@ public class ServiceEntryPoint extends AbstractVerticle {
     public void start(Future<Void> startFuture) {
         System.out.println("START RestEntryVerticle  THREAD: " + Thread.currentThread() + "  this:" + this);
         vertx.eventBus().registerDefaultCodec(ServiceInfo.class, serviceInfoDecoder);
-        vertx.eventBus().registerDefaultCodec(Parameter.class, parameterDecoder);
+      //  vertx.eventBus().registerDefaultCodec(Parameter.class, parameterDecoder);
         initConfiguration(getConfig());
 
+        vertx.eventBus().consumer("ws.redirect", (Handler<Message<byte[]>>) event -> redirect(event));
         vertx.eventBus().consumer(serviceRegisterPath, this::serviceRegisterHandler);
         vertx.eventBus().consumer(serviceUnRegisterPath, this::serviceUnRegisterHandler);
 
@@ -265,68 +265,100 @@ public class ServiceEntryPoint extends AbstractVerticle {
         server.websocketHandler((serverSocket) -> {
             final String path = serverSocket.path();
             final EventBus eventBus = vertx.eventBus();
-            switch (path) {
-                // TODO maintain list of path entries
-                case "/all":
-
-                    System.out.println("Call");
-                    serverSocket.handler(data -> {
-
-                        eventBus.send(path, "message", new DeliveryOptions().setSendTimeout(3000), message -> handleWSEvent(message, serverSocket));
-
-
-                        System.out.println("DataHandler");
-                        serverSocket.writeFrame(new WebSocketFrameImpl("sddsfs"));
-                    });
-                    break;
-            }
+            findRouteToWSServiceAndRegister(serverSocket);
         });
     }
 
 
-    /**
-     * Registers onMessage and onClose message handler for WebSockets
-     *
-     * @param httpServer
-     */
-    private void registerWebsocketHandler(final HttpServer httpServer) {
-        httpServer.websocketHandler((serverSocket) -> {
-            repository.addWebSocket(serverSocket);
-            List<JsonObject> allInfos = new ArrayList<>();
-            serverSocket.handler(socket -> {
-                   /* allInfos.forEach( e->e
+    private void findRouteToWSServiceAndRegister(ServerWebSocket serverSocket) {
+        final String binaryHandlerId = serverSocket.binaryHandlerID();
+        final String textHandlerId = serverSocket.textHandlerID();
 
-                    );*/
 
-            });
-            // TODO 1.) get a List of all services (PROBLEM: get list from all instances.. use shared map) 2.) iterate over each service/servicepath, register a datahandler and a send
-            // serverSocket.dataHandler(this::redirectWSMessageToBus);
-            //serverSocket.closeHandler((close) -> handleConnectionClose(close, serverSocket));
-        });
+        final EventBus eventBus = vertx.eventBus();
+        this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
+                        resultMap.get("serviceHolder", onSuccess(resultHolder -> {
+                            if (resultHolder != null) {
+                                final String path = serverSocket.path();
+                                final Optional<Operation> operationResult = resultHolder.
+                                        getAll().
+                                        stream().
+                                        map(info -> Arrays.asList(info.getOperations())).
+                                        flatMap(infos -> infos.stream()).
+                                        filter(op -> op.getUrl().equalsIgnoreCase(path)).
+                                        findFirst();
+                                operationResult.ifPresent(op -> {
+                                    final WSEndpoint endpoint = new WSEndpoint(binaryHandlerId, textHandlerId, path);
+
+
+                                    this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap("wsRegistry", onSuccess(registryMap -> {
+                                                registryMap.get("wsEndpointHolder", onSuccess(wsEndpointHolder -> {
+                                                    WSEndpointHolder holder = null;
+                                                    if (wsEndpointHolder != null) {
+                                                        holder = wsEndpointHolder;
+                                                        holder.add(endpoint);
+                                                        registryMap.replace("wsEndpointHolder", holder, onSuccess(s -> {
+                                                                    System.out.println("OK REPLACE");
+                                                                    sendToWSService(serverSocket, eventBus, path, endpoint);
+                                                                }  )
+                                                        );
+                                                    } else {
+                                                        holder = new WSEndpointHolder();
+
+                                                        holder.add(endpoint);
+                                                        registryMap.put("wsEndpointHolder", holder, onSuccess(s ->{
+                                                                    System.out.println("OK ADD");
+                                                                    sendToWSService(serverSocket, eventBus, path, endpoint);
+                                                                }
+
+                                                        ));
+                                                    }
+                                                }));
+                                            }
+                                    ));
+
+                                });
+                            }
+                        }))
+        ));
     }
 
-    private void serviceRegisterWSHandler(final JsonObject info) {
+    private void sendToWSService(final ServerWebSocket serverSocket, final EventBus eventBus, final String path, final WSEndpoint endpoint) {
+        serverSocket.handler(handler -> {
+                    try {
 
+                        eventBus.send(path, Serializer.serialize(new WSDataWrapper(endpoint, handler.getBytes())));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
 
+        );
+
+        //TODO set close handler!!
     }
 
-    /**
-     * handles REST events (POST,GET,...)
-     *
-     * @param event the async event
-     * @param ws    the ServerWebSocket
-     */
-    private void handleWSEvent(AsyncResult<Message<Object>> event, ServerWebSocket ws) {
-        if (event.succeeded()) {
-            final Object result = event.result().body();
-            // TODO check if result should be send back to caller, all, or all but caller
-            final String stringResult = TypeTool.trySerializeToString(result);
+
+    private void redirect(Message<byte[]> message) {
+        try {
+            System.out.println("REDIRECT: "+this);
+            WSMessageWrapper wrapper = (WSMessageWrapper) Serializer.deserialize(message.body());
+            final String stringResult = TypeTool.trySerializeToString(wrapper.getBody());
             if (stringResult != null) {
-                ws.writeFrame(new WebSocketFrameImpl(stringResult));
+                vertx.eventBus().send(wrapper.getEndpoint().getTextHandlerId(), stringResult);
+            } else {
+                vertx.eventBus().send(wrapper.getEndpoint().getBinaryHandlerId(), Serializer.serialize(wrapper.getBody()));
             }
 
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
         }
     }
+
+
+
 
     private JsonObject getConfig() {
         return context != null ? context.config() : new JsonObject();

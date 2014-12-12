@@ -27,7 +27,7 @@ public class ServiceRegistry extends AbstractVerticle {
 
     private static final long DEFAULT_EXPIRATION_AGE = 5000;
     private static final long DEFAULT_TIMEOUT = 5000;
-    private static final long DEFAULT_PING_TIME = 5000;
+    private static final long DEFAULT_PING_TIME = 10000;
     private static final long DEFAULT_SWEEP_TIME = 0;
     private static final String SERVICE_REGISTRY_GET = "services.registry.get";
     public static final String SERVICE_REGISTRY_REGISTER = "services.registry.register";
@@ -60,7 +60,6 @@ public class ServiceRegistry extends AbstractVerticle {
     }
 
     private void getServicesInfo(Message<JsonObject> message) {
-        // TODO add locking
         log.info("Register: " + message.body());
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
                         resultMap.get("serviceHolder", onSuccess(resultHolder -> {
@@ -85,7 +84,6 @@ public class ServiceRegistry extends AbstractVerticle {
     }
 
     private void serviceRegister(final Message<JsonObject> message) {
-        // TODO add locking
         log.info("Register: " + message.body());
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap -> {
                     log.info("got map");
@@ -180,6 +178,7 @@ public class ServiceRegistry extends AbstractVerticle {
     }
 
     private void unregisterServiceAtRouter(final ServiceInfo info) {
+        // TODO try to reconnect!!
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
                         resultMap.get("serviceHolder", onSuccess(holder -> {
                             holder.remove(info);
