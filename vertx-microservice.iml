@@ -4,6 +4,11 @@
     <output url="file://$MODULE_DIR$/target/classes" />
     <output-test url="file://$MODULE_DIR$/target/test-classes" />
     <content url="file://$MODULE_DIR$">
+      <sourceFolder url="file://$MODULE_DIR$/microservice-common/src/main/java" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/microservice-verticle/src/main/java" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/microservice-verticle/src/test/java" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/service-router/src/main/java" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/service-router/src/test/java" isTestSource="true" />
       <excludeFolder url="file://$MODULE_DIR$/target" />
     </content>
     <orderEntry type="inheritedJdk" />

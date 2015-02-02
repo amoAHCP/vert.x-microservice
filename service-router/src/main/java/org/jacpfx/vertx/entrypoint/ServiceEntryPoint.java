@@ -6,6 +6,7 @@ import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.*;
 import io.vertx.core.json.JsonObject;
+import io.vertx.core.shareddata.AsyncMap;
 import org.jacpfx.common.*;
 import org.jacpfx.vertx.util.CustomRouteMatcher;
 import org.jacpfx.vertx.util.WebSocketRepository;
@@ -125,7 +126,6 @@ public class ServiceEntryPoint extends AbstractVerticle {
                                 handleRESTGetRegistration(eventBus, url, mimes);
                                 break;
                             case REST_POST:
-
                                 handleRESTPostRegistration(eventBus, url, mimes);
                                 break;
                             case EVENTBUS:
@@ -240,6 +240,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
             }
 
         } else {
+            // TODO define configurable ERROR message
             request.response().end("error");
         }
     }
@@ -263,70 +264,85 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
     private void registerWebSocketHandler(HttpServer server) {
         server.websocketHandler((serverSocket) -> {
-            final String path = serverSocket.path();
-            final EventBus eventBus = vertx.eventBus();
             findRouteToWSServiceAndRegister(serverSocket);
         });
     }
 
 
     private void findRouteToWSServiceAndRegister(ServerWebSocket serverSocket) {
-        final String binaryHandlerId = serverSocket.binaryHandlerID();
-        final String textHandlerId = serverSocket.textHandlerID();
 
-
-        final EventBus eventBus = vertx.eventBus();
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
-                        resultMap.get("serviceHolder", onSuccess(resultHolder -> {
-                            if (resultHolder != null) {
-                                final String path = serverSocket.path();
-                                final Optional<Operation> operationResult = resultHolder.
-                                        getAll().
-                                        stream().
-                                        map(info -> Arrays.asList(info.getOperations())).
-                                        flatMap(infos -> infos.stream()).
-                                        filter(op -> op.getUrl().equalsIgnoreCase(path)).
-                                        findFirst();
-                                operationResult.ifPresent(op -> {
-                                    final WSEndpoint endpoint = new WSEndpoint(binaryHandlerId, textHandlerId, path);
-
-
-                                    this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap("wsRegistry", onSuccess(registryMap -> {
-                                                registryMap.get("wsEndpointHolder", onSuccess(wsEndpointHolder -> {
-                                                    WSEndpointHolder holder = null;
-                                                    if (wsEndpointHolder != null) {
-                                                        holder = wsEndpointHolder;
-                                                        holder.add(endpoint);
-                                                        registryMap.replace("wsEndpointHolder", holder, onSuccess(s -> {
-                                                                    System.out.println("OK REPLACE");
-                                                                    sendToWSService(serverSocket, eventBus, path, endpoint);
-                                                                }  )
-                                                        );
-                                                    } else {
-                                                        holder = new WSEndpointHolder();
-
-                                                        holder.add(endpoint);
-                                                        registryMap.put("wsEndpointHolder", holder, onSuccess(s ->{
-                                                                    System.out.println("OK ADD");
-                                                                    sendToWSService(serverSocket, eventBus, path, endpoint);
-                                                                }
-
-                                                        ));
-                                                    }
-                                                }));
-                                            }
-                                    ));
-
-                                });
-                            }
-                        }))
+                        resultMap.get("serviceHolder", onSuccess(resultHolder -> findServiceEntryAndRegisterWS(serverSocket, resultHolder)))
         ));
+    }
+
+    private void findServiceEntryAndRegisterWS(final ServerWebSocket serverSocket, final ServiceInfoHolder resultHolder){
+        if (resultHolder != null) {
+
+            final String path = serverSocket.path();
+            final Optional<Operation> operationResult = findServiceInfoEntry(resultHolder, path);
+            operationResult.ifPresent(op ->
+                createEndpointDefinitionAndRegister(serverSocket, path)
+            );
+        }
+    }
+
+    private Optional<Operation> findServiceInfoEntry(ServiceInfoHolder resultHolder, String path) {
+        return resultHolder.
+                getAll().
+                stream().
+                map(info -> Arrays.asList(info.getOperations())).
+                flatMap(infos -> infos.stream()).
+                filter(op -> op.getUrl().equalsIgnoreCase(path)).
+                findFirst();
+    }
+
+    private void createEndpointDefinitionAndRegister(ServerWebSocket serverSocket,String path) {
+
+        this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap("wsRegistry", onSuccess(registryMap -> {
+                    getEndpointHolderAndAdd(serverSocket, path, registryMap);
+                }
+        ));
+    }
+
+    private void getEndpointHolderAndAdd(ServerWebSocket serverSocket, String path, AsyncMap<String, WSEndpointHolder> registryMap) {
+        registryMap.get("wsEndpointHolder", onSuccess(wsEndpointHolder -> {
+            final String binaryHandlerId = serverSocket.binaryHandlerID();
+            final String textHandlerId = serverSocket.textHandlerID();
+            final EventBus eventBus = vertx.eventBus();
+            final WSEndpoint endpoint = new WSEndpoint(binaryHandlerId, textHandlerId, path);
+            if (wsEndpointHolder != null) {
+                addDefinitionToRegistry(serverSocket, eventBus, path, endpoint, registryMap, wsEndpointHolder);
+            } else {
+                createEntryAndAddDefinition(serverSocket, eventBus, path, endpoint, registryMap);
+            }
+        }));
+    }
+
+    private void createEntryAndAddDefinition(ServerWebSocket serverSocket, EventBus eventBus, String path, WSEndpoint endpoint, AsyncMap<String, WSEndpointHolder> registryMap) {
+        final WSEndpointHolder holder= new WSEndpointHolder();
+        holder.add(endpoint);
+        registryMap.put("wsEndpointHolder", holder, onSuccess(s ->{
+                    System.out.println("OK ADD");
+                    sendToWSService(serverSocket, eventBus, path, endpoint);
+                }
+
+        ));
+    }
+
+    private void addDefinitionToRegistry(ServerWebSocket serverSocket, EventBus eventBus, String path, WSEndpoint endpoint, AsyncMap<String, WSEndpointHolder> registryMap, WSEndpointHolder wsEndpointHolder) {
+        final WSEndpointHolder holder= wsEndpointHolder;
+        holder.add(endpoint);
+        registryMap.replace("wsEndpointHolder", holder, onSuccess(s -> {
+                    System.out.println("OK REPLACE");
+                    sendToWSService(serverSocket, eventBus, path, endpoint);
+                }  )
+        );
     }
 
     private void sendToWSService(final ServerWebSocket serverSocket, final EventBus eventBus, final String path, final WSEndpoint endpoint) {
         serverSocket.handler(handler -> {
                     try {
-
                         eventBus.send(path, Serializer.serialize(new WSDataWrapper(endpoint, handler.getBytes())));
                     } catch (IOException e) {
                         e.printStackTrace();
@@ -342,7 +358,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private void redirect(Message<byte[]> message) {
         try {
             System.out.println("REDIRECT: "+this);
-            WSMessageWrapper wrapper = (WSMessageWrapper) Serializer.deserialize(message.body());
+            final WSMessageWrapper wrapper = (WSMessageWrapper) Serializer.deserialize(message.body());
             final String stringResult = TypeTool.trySerializeToString(wrapper.getBody());
             if (stringResult != null) {
                 vertx.eventBus().send(wrapper.getEndpoint().getTextHandlerId(), stringResult);

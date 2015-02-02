@@ -45,23 +45,24 @@ public class ServiceEntryPointWSBasicTest extends VertxTestBase {
 
 
         HttpClient client = vertx.
-                createHttpClient(new HttpClientOptions()).connectWebsocket(8080, "localhost", path, handler);
+                createHttpClient(new HttpClientOptions()).websocket(8080, "localhost", path, handler);
 
         return client;
     }
 
 
     @Test
-    public void getSimpleConnection() throws InterruptedException, IOException {
-        CountDownLatch latchMain = new CountDownLatch(10);
+    public void getSimpleConnection1() throws InterruptedException, IOException {
+        CountDownLatch latchMain = new CountDownLatch(1);
         Runnable r = () -> {
             try {
                 CountDownLatch latch = new CountDownLatch(1);
-                CountDownLatch latch2 = new CountDownLatch(9);
+                CountDownLatch latch2 =new CountDownLatch(9);// new CountDownLatch(9);
                 final WebSocket[] wsTemp = new WebSocket[1];
                 HttpClient client = getClient((ws) -> {
-                    latch.countDown();
+
                     wsTemp[0] = ws;
+                    latch.countDown();
                     ws.handler((data) -> {
                         System.out.println("client data handler 1:" + new String(data.getBytes()));
                         assertNotNull(data.getString(0, data.length()));
@@ -86,6 +87,7 @@ public class ServiceEntryPointWSBasicTest extends VertxTestBase {
             }
         };
 
+       /* new Thread(r).start();
         new Thread(r).start();
         new Thread(r).start();
         new Thread(r).start();
@@ -93,10 +95,46 @@ public class ServiceEntryPointWSBasicTest extends VertxTestBase {
         new Thread(r).start();
         new Thread(r).start();
         new Thread(r).start();
-        new Thread(r).start();
-        new Thread(r).start();
+        new Thread(r).start();*/
         new Thread(r).start();
 
         latchMain.await();
+    }
+
+
+    @Test
+    public void getSimpleConnection2() throws InterruptedException, IOException {
+        CountDownLatch latch = new CountDownLatch(1);
+        CountDownLatch latch2 = new CountDownLatch(30);
+        final WebSocket[] wsTemp = new WebSocket[1];
+        HttpClient client = getClient((ws) -> {
+
+            wsTemp[0] = ws;
+            latch.countDown();
+            ws.handler((data) -> {
+                System.out.println("client data handler 1:" + new String(data.getBytes()));
+                assertNotNull(data.getString(0, data.length()));
+                latch2.countDown();
+            });
+        }, "/service-REST-GET/hello");
+
+
+        latch.await();
+
+
+        //  assertNotNull(wsTemp[0]);
+
+        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello"));
+        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello2"));
+        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello3"));
+        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello4"));
+        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello5"));
+        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello6"));
+        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello7"));
+        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello8"));
+        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello9"));
+        wsTemp[0].writeFrame(new WebSocketFrameImpl("hello10"));
+        latch2.await();
+        client.close();
     }
 }

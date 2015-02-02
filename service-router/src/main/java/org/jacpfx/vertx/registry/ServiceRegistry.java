@@ -87,6 +87,7 @@ public class ServiceRegistry extends AbstractVerticle {
         log.info("Register: " + message.body());
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap -> {
                     log.info("got map");
+                    // TODO ... this operation should  be locked !!!
                     resultMap.get("serviceHolder", onSuccess(resultHolder -> {
                         log.info("got result holder");
                         if (resultHolder != null) {
