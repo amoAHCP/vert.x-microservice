@@ -43,7 +43,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
 
     @Override
-    public void start(Future<Void> startFuture) {
+    public void start(io.vertx.core.Future<Void> startFuture) throws Exception {
         System.out.println("START RestEntryVerticle  THREAD: " + Thread.currentThread() + "  this:" + this);
         vertx.eventBus().registerDefaultCodec(ServiceInfo.class, serviceInfoDecoder);
       //  vertx.eventBus().registerDefaultCodec(Parameter.class, parameterDecoder);
@@ -55,26 +55,21 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
         vertx.deployVerticle("org.jacpfx.vertx.registry.ServiceRegistry");
 
-        initHTTPConnector(startFuture);
+        initHTTPConnector();
     }
 
 
     /**
      * start the server, attach the route matcher
      */
-    private void initHTTPConnector(Future<Void> startFuture) {
-        final HttpServer server = vertx.createHttpServer(new HttpServerOptions().setHost(host)
+    private void initHTTPConnector() {
+       HttpServer server = vertx.createHttpServer(new HttpServerOptions().setHost(host)
                 .setPort(port));
         registerWebSocketHandler(server);
         routeMatcher.matchMethod(HttpMethod.GET, serviceInfoPath, this::registerInfoHandler);
         routeMatcher.noMatch(handler -> handler.response().end("no route found"));
         server.requestHandler(routeMatcher::accept).listen(res -> {
-            // When the web server is listening we'll say that the start of this verticle is complete
-            if (res.succeeded()) {
-                startFuture.complete();
-            } else {
-                startFuture.fail(res.cause());
-            }
+
         });
 
 
@@ -264,6 +259,20 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
     private void registerWebSocketHandler(HttpServer server) {
         server.websocketHandler((serverSocket) -> {
+            System.out.println("connect socket");
+            serverSocket.pause();
+            serverSocket.exceptionHandler(ex -> {
+                ex.printStackTrace();
+            });
+            serverSocket.drainHandler(drain -> {
+                System.out.println("drain");
+            }) ;
+            serverSocket.endHandler(end -> {
+                System.out.println("end");
+            }) ;
+            serverSocket.closeHandler(close -> {
+                System.out.println("close");
+            }) ;
             findRouteToWSServiceAndRegister(serverSocket);
         });
     }
@@ -280,6 +289,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
         if (resultHolder != null) {
 
             final String path = serverSocket.path();
+            System.out.println("find entry : "+ path);
             final Optional<Operation> operationResult = findServiceInfoEntry(resultHolder, path);
             operationResult.ifPresent(op ->
                 createEndpointDefinitionAndRegister(serverSocket, path)
@@ -307,6 +317,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
     private void getEndpointHolderAndAdd(ServerWebSocket serverSocket, String path, AsyncMap<String, WSEndpointHolder> registryMap) {
         registryMap.get("wsEndpointHolder", onSuccess(wsEndpointHolder -> {
+            System.out.println("add entry");
             final String binaryHandlerId = serverSocket.binaryHandlerID();
             final String textHandlerId = serverSocket.textHandlerID();
             final EventBus eventBus = vertx.eventBus();
@@ -323,7 +334,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
         final WSEndpointHolder holder= new WSEndpointHolder();
         holder.add(endpoint);
         registryMap.put("wsEndpointHolder", holder, onSuccess(s ->{
-                    System.out.println("OK ADD");
+                    System.out.println("OK ADD: "+serverSocket.binaryHandlerID());
                     sendToWSService(serverSocket, eventBus, path, endpoint);
                 }
 
@@ -334,7 +345,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
         final WSEndpointHolder holder= wsEndpointHolder;
         holder.add(endpoint);
         registryMap.replace("wsEndpointHolder", holder, onSuccess(s -> {
-                    System.out.println("OK REPLACE");
+                    System.out.println("OK REPLACE: "+serverSocket.binaryHandlerID());
                     sendToWSService(serverSocket, eventBus, path, endpoint);
                 }  )
         );
@@ -343,14 +354,16 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private void sendToWSService(final ServerWebSocket serverSocket, final EventBus eventBus, final String path, final WSEndpoint endpoint) {
         serverSocket.handler(handler -> {
                     try {
-                        eventBus.send(path, Serializer.serialize(new WSDataWrapper(endpoint, handler.getBytes())));
+                        System.out.println("send WS:+ "+endpoint.getUrl());
+                        eventBus.send(path, Serializer.serialize(new WSDataWrapper(endpoint, handler.getBytes())),new DeliveryOptions().setSendTimeout(DEFAULT_SERVICE_TIMEOUT));
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
                 }
 
-        );
 
+        );
+        serverSocket.resume();
         //TODO set close handler!!
     }
 

@@ -38,7 +38,7 @@
 
 
         <!--Dependency versions-->
-        <vertx.version>3.0.0-SNAPSHOT</vertx.version>
+        <vertx.version>3.0.0-dev_preview1</vertx.version>
 
         <junit.version>4.11</junit.version>
 
@@ -94,27 +94,14 @@
             <artifactId>vertx-core</artifactId>
             <version>${vertx.version}</version>
         </dependency>
-        <!-- If you're using the Vert.x JavaScript API you need this dependency -->
-        <dependency>
-            <groupId>io.vertx</groupId>
-            <artifactId>vertx-js</artifactId>
-            <version>${vertx.version}</version>
-        </dependency>
         <!-- If you're using the Vert.x Groovy API you need this dependency -->
 
+        <dependency>
+          <groupId>io.vertx</groupId>
+          <artifactId>vertx-routematcher</artifactId>
+          <version>${vertx.version}</version>
+        </dependency>
 
-        <!-- We're using the Vert.x routematcher for REST style http route matching -->
-        <dependency>
-            <groupId>io.vertx</groupId>
-            <artifactId>ext-routematcher</artifactId>
-            <version>${vertx.version}</version>
-        </dependency>
-        <!-- We're using the SockJS bridge for bridging the event bus to client side JavaScript -->
-        <dependency>
-            <groupId>io.vertx</groupId>
-            <artifactId>ext-sockjs</artifactId>
-            <version>${vertx.version}</version>
-        </dependency>
         <!-- We use services -->
         <dependency>
             <groupId>io.vertx</groupId>
@@ -129,7 +116,12 @@
             <type>test-jar</type>
             <scope>test</scope>
         </dependency>
-
+        <dependency>
+          <groupId>junit</groupId>
+          <artifactId>junit</artifactId>
+          <version>4.11</version>
+          <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

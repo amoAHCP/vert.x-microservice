@@ -1,6 +1,8 @@
 package org.jacpfx.integration;
 
+import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
+import io.vertx.test.fakecluster.FakeClusterManager;
 import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
@@ -9,6 +11,11 @@ import java.util.concurrent.CountDownLatch;
  * Created by amo on 13.11.14.
  */
 public class ServiceRegistryTest extends VertxTestBase {
+
+    @Override
+    protected ClusterManager getClusterManager() {
+        return new FakeClusterManager();
+    }
 
     @Override
     public void setUp() throws Exception {

@@ -5,18 +5,18 @@ import com.google.gson.GsonBuilder;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
+import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
 import org.jacpfx.common.*;
-import org.jacpfx.common.Parameter;
 
 import javax.ws.rs.*;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.*;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.MissingResourceException;
@@ -31,7 +31,7 @@ import java.util.stream.Stream;
 public abstract class ServiceVerticle extends AbstractVerticle {
     private static final Logger log = LoggerFactory.getLogger(ServiceVerticle.class);
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-    private JsonObject descriptor;
+    private ServiceInfo descriptor;
     private static final String HOST_PREFIX = "";
 
     @Override
@@ -43,7 +43,6 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
         // register info handler
         vertx.eventBus().consumer(serviceName() + "-info", this::info);
-        vertx.eventBus().consumer(serviceName() + "-reconnect", this::reconnect);
     }
 
     private void registerService() {
@@ -52,19 +51,20 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                 log.info(val);
                 if(val<=1)
                     // register service at service registry
-                    vertx.eventBus().send("services.registry.register", descriptor);
+                    try {
+
+                        vertx.eventBus().send("services.registry.register", Serializer.serialize(descriptor), onSuccess(result->{
+
+                        }));
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
             }));
         }));
     }
 
-    private JsonObject createInfoObject(List<JsonObject> operations) {
-        final JsonObject tmp = new JsonObject();
-        final JsonArray operationsArray = new JsonArray();
-        operations.forEach(op -> operationsArray.add(op));
-        tmp.put("serviceName", serviceName());
-        tmp.put("operations", operationsArray);
-
-        return tmp;
+    private ServiceInfo createInfoObject(List<Operation> operations) {
+        return new ServiceInfo(serviceName(),operations.toArray(new Operation[operations.size()]));
     }
 
     protected <T> Handler<AsyncResult<T>> onSuccess(Consumer<T> consumer) {
@@ -84,13 +84,13 @@ public abstract class ServiceVerticle extends AbstractVerticle {
      * @param allMethods methods in serviceVerticle
      * @return a list of all operation in service
      */
-    private List<JsonObject> getAllOperationsInService(final Method[] allMethods) {
+    private List<Operation> getAllOperationsInService(final Method[] allMethods) {
         return Stream.of(allMethods).
                 filter(m -> m.isAnnotationPresent(Path.class)).
                 map(method -> mapServiceMethod(method)).collect(Collectors.toList());
     }
 
-    private JsonObject mapServiceMethod(Method method) {
+    private Operation mapServiceMethod(Method method) {
         final Path path = method.getDeclaredAnnotation(Path.class);
         final Produces mime = method.getDeclaredAnnotation(Produces.class);
         final OperationType opType = method.getDeclaredAnnotation(OperationType.class);
@@ -123,8 +123,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                 break;
         }
 
-
-        return JSONTool.createOperationObject(url, opType.value().name(), mimeTypes, parameters.toArray(new String[parameters.size()]));
+        return new Operation(url,opType.value().name(),mimeTypes,parameters.toArray(new String[parameters.size()]));
     }
 
     /**
@@ -365,17 +364,20 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
     private void info(Message m) {
 
-        m.reply(getServiceDescriptor());
-        System.out.println("reply to: " + m.body());
+        try {
+            m.reply(Serializer.serialize(getServiceDescriptor()),new DeliveryOptions().setSendTimeout(10000));
+            System.out.println("reply to: " + m.body());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }  catch (Exception e) {
+            e.printStackTrace();
+        }
+
     }
 
-    private void reconnect(Message m) {
-
-        registerService();
-    }
 
 
-    public JsonObject getServiceDescriptor() {
+    public ServiceInfo getServiceDescriptor() {
         return this.descriptor;
     }
 
