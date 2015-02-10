@@ -38,7 +38,7 @@
 
 
         <!--Dependency versions-->
-        <vertx.version>3.0.0-dev_preview1</vertx.version>
+        <vertx.version>3.0.0-milestone2</vertx.version>
 
         <junit.version>4.11</junit.version>
 
@@ -99,7 +99,7 @@
         <dependency>
           <groupId>io.vertx</groupId>
           <artifactId>vertx-routematcher</artifactId>
-          <version>${vertx.version}</version>
+          <version>3.0.0-dev_preview1</version>
         </dependency>
 
         <!-- We use services -->

@@ -111,13 +111,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                 break;
             case WEBSOCKET:
                 parameters.addAll(getWSParameter(method));
-                vertx.eventBus().consumer(url, new Handler<Message<byte[]>>() {
-                    @Override
-                    public void handle(Message<byte[]> event) {
-                        genericWSHandler(event, method);
-                    }
-                });
-                //vertx.eventBus().consumer(url, handler -> genericWSHandler(handler, method));
+                vertx.eventBus().consumer(url, (Handler<Message<byte[]>>)handler -> genericWSHandler(handler, method));
                 break;
             case EVENTBUS:
                 break;
@@ -176,7 +170,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
      */
     private List<String> getPathParametersInMethod(final Annotation[][] parameterAnnotations) {
         final List<String> parameters = new ArrayList<>();
-        for (Annotation[] parameterAnnotation : parameterAnnotations) {
+        for (final Annotation[] parameterAnnotation : parameterAnnotations) {
             parameters.addAll(Stream.of(parameterAnnotation).
                     filter(pa -> PathParam.class.isAssignableFrom(pa.getClass())).
                     map(parameter -> PathParam.class.cast(parameter).value()).
@@ -193,7 +187,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
      */
     private List<String> getFormParamParametersInMethod(final Annotation[][] parameterAnnotations) {
         final List<String> parameters = new ArrayList<>();
-        for (Annotation[] parameterAnnotation : parameterAnnotations) {
+        for (final Annotation[] parameterAnnotation : parameterAnnotations) {
             parameters.addAll(Stream.of(parameterAnnotation).
                     filter(pa -> FormParam.class.isAssignableFrom(pa.getClass())).
                     map(parameter -> FormParam.class.cast(parameter).value()).
@@ -233,6 +227,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
      */
     private void genericWSHandler(Message<byte[]> m, Method method) {
         try {
+            System.out.println("got WS message");
             final Object replyValue = method.invoke(this, invokeWSParameters(m, method));
             // TODO ws services should not have a reply value!!
         } catch (IllegalAccessException e) {
@@ -244,10 +239,12 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     private Object[] invokeWSParameters(Message<byte[]> m, Method method) {
-        //final Parameter<byte[]> params = getObjectParameter(m);
-        final WSDataWrapper wrapper = getWSDataWrapper(m);//params.getValue("ws.default.param");
+        final WSDataWrapper wrapper = getWSDataWrapper(m);
         final java.lang.reflect.Parameter[] parameters = method.getParameters();
         final Object[] parameterResult = new Object[parameters.length];
+        this.vertx.getOrCreateContext().runOnContext(event -> {
+
+        });
         int i = 0;
         for(java.lang.reflect.Parameter p :parameters) {
              if(p.getType().equals(MessageReply.class)) {
