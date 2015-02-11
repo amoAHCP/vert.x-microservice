@@ -8,7 +8,6 @@ import io.vertx.core.http.impl.ws.WebSocketFrameImpl;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
-import org.junit.Ignore;
 import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
@@ -144,7 +143,6 @@ public class ServiceEntryPointWSBasicTest extends VertxTestBase {
     }
 
     @Test
-    @Ignore
     public void simpleConnectOnTenThreads() throws InterruptedException {
         ExecutorService s = Executors.newFixedThreadPool(10);
         CountDownLatch latchMain = new CountDownLatch(10);
