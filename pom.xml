@@ -38,7 +38,7 @@
 
 
         <!--Dependency versions-->
-        <vertx.version>3.0.0-milestone2</vertx.version>
+        <vertx.version>3.0.0-milestone3</vertx.version>
 
         <junit.version>4.11</junit.version>
 
@@ -95,12 +95,6 @@
             <version>${vertx.version}</version>
         </dependency>
         <!-- If you're using the Vert.x Groovy API you need this dependency -->
-
-        <dependency>
-          <groupId>io.vertx</groupId>
-          <artifactId>vertx-routematcher</artifactId>
-          <version>3.0.0-dev_preview1</version>
-        </dependency>
 
         <!-- We use services -->
         <dependency>

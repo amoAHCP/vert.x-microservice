@@ -4,7 +4,6 @@ package org.jacpfx.vertx.util;
 import io.vertx.core.Handler;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServerRequest;
-import io.vertx.ext.routematcher.RouteMatcher;
 
 import java.util.*;
 import java.util.regex.Matcher;
@@ -13,7 +12,7 @@ import java.util.regex.Pattern;
 /**
  * Created by amo on 10.11.14.
  */
-public class CustomRouteMatcher implements RouteMatcher {
+public class CustomRouteMatcher  {
 
     private final Map<HttpMethod, List<PatternBinding>> bindingsMap = new HashMap<>();
 
@@ -25,8 +24,7 @@ public class CustomRouteMatcher implements RouteMatcher {
     public CustomRouteMatcher() {
     }
 
-    @Override
-    public RouteMatcher accept(HttpServerRequest request) {
+    public CustomRouteMatcher accept(HttpServerRequest request) {
         List<PatternBinding> bindings = bindingsMap.get(request.method());
         if (bindings != null) {
             route(request, bindings);
@@ -36,14 +34,12 @@ public class CustomRouteMatcher implements RouteMatcher {
         return this;
     }
 
-    @Override
-    public RouteMatcher matchMethod(HttpMethod method, String pattern, Handler<HttpServerRequest> handler) {
+    public CustomRouteMatcher matchMethod(HttpMethod method, String pattern, Handler<HttpServerRequest> handler) {
         addPattern(method, pattern, handler);
         return this;
     }
 
-    @Override
-    public RouteMatcher matchMethodWithRegEx(HttpMethod method, String regex, Handler<HttpServerRequest> handler) {
+    public CustomRouteMatcher matchMethodWithRegEx(HttpMethod method, String regex, Handler<HttpServerRequest> handler) {
         addRegEx(method, regex, handler);
         return this;
     }
@@ -78,7 +74,6 @@ public class CustomRouteMatcher implements RouteMatcher {
      * @param pattern The simple pattern
      * @param handler The handler to call
      */
-    @Override
     public CustomRouteMatcher all(String pattern, Handler<HttpServerRequest> handler) {
         addPattern(HttpMethod.GET, pattern, handler);
         addPattern(HttpMethod.PUT, pattern, handler);
@@ -97,7 +92,6 @@ public class CustomRouteMatcher implements RouteMatcher {
      * @param regex A regular expression
      * @param handler The handler to call
      */
-    @Override
     public CustomRouteMatcher allWithRegEx(String regex, Handler<HttpServerRequest> handler) {
         addRegEx(HttpMethod.GET, regex, handler);
         addRegEx(HttpMethod.PUT, regex, handler);
@@ -115,7 +109,6 @@ public class CustomRouteMatcher implements RouteMatcher {
      * Specify a handler that will be called when no other handlers match.
      * If this handler is not specified default behaviour is to return a 404
      */
-    @Override
     public CustomRouteMatcher noMatch(Handler<HttpServerRequest> handler) {
         noMatchHandler = handler;
         return this;
