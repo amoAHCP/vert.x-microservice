@@ -18,7 +18,6 @@ import org.jacpfx.vertx.util.WebSocketRepository;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -49,7 +48,6 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private int port;
     private int defaultServiceTimeout;
 
-    public ReentrantReadWriteLock wsHolderLock = new ReentrantReadWriteLock();
 
 
     @Override
@@ -124,6 +122,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
                     final String type = operation.getType();
                     final String url = operation.getUrl();
                     final String[] mimes = operation.getMime();
+                    // TODO check mime and prevent nullpointer
                     // TODO specify timeout in service info object, so that every Service can specify his own timeout
                     // defaultServiceTimeout =   operation.getInteger("timeout");
                     if (!registeredRoutes.contains(url)) {

@@ -36,6 +36,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
     @Override
     public final void start() {
+        long startTime = System.currentTimeMillis();
         // collect all service operations in service for descriptor
         descriptor = createInfoObject(getAllOperationsInService(this.getClass().getDeclaredMethods()));
 
@@ -43,6 +44,8 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
         // register info handler
         vertx.eventBus().consumer(serviceName() + "-info", this::info);
+        long endTime = System.currentTimeMillis();
+        System.out.println("start time: " + (endTime - startTime) + "ms");
     }
 
     private void registerService() {
