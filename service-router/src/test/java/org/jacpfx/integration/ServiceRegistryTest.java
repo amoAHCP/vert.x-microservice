@@ -3,7 +3,6 @@ package org.jacpfx.integration;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
-import org.junit.Test;
 
 import java.util.concurrent.CountDownLatch;
 
@@ -34,7 +33,7 @@ public class ServiceRegistryTest extends VertxTestBase {
         awaitLatch(latch);
     }
 
-    @Test
+   // @Test
     public void testRegisterVerticle() throws InterruptedException {
         /*vertx.eventBus().send(ServiceRegistry.SERVICE_REGISTRY_REGISTER, getServiceInfoDesc("/testservice1"), (Handler<Message<Boolean>>)reply->{
 

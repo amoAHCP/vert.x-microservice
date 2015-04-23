@@ -1,7 +1,6 @@
 package org.jacpfx.vertx.handler;
 
 import io.vertx.core.AsyncResult;
-import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.EventBus;
@@ -14,17 +13,17 @@ import io.vertx.core.shareddata.Lock;
 import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.*;
 import org.jacpfx.vertx.entrypoint.ServiceEntryPoint;
+import org.jacpfx.vertx.util.GlobalKeyHolder;
 
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Consumer;
 
 /**
  * Created by Andy Moncsek on 11.02.15.
  */
-public class WSClusterHandler {
+public class WSClusterHandler implements WebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(WSClusterHandler.class);
 
@@ -35,11 +34,49 @@ public class WSClusterHandler {
     }
 
 
+    @Override
     public void findRouteToWSServiceAndRegister(ServerWebSocket serverSocket) {
         final SharedData sharedData = this.vertx.sharedData();
-        sharedData.<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
-                        resultMap.get("serviceHolder", onSuccess(resultHolder -> findServiceEntryAndRegisterWS(serverSocket, resultHolder, sharedData)))
+        sharedData.<String, ServiceInfoHolder>getClusterWideMap(REGISTRY, onSuccess(resultMap ->
+                        resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(resultHolder -> findServiceEntryAndRegisterWS(serverSocket, resultHolder, sharedData)))
         ));
+    }
+
+    @Override
+    public void replyToWSCaller(Message<byte[]> message) {
+        try {
+            log("REDIRECT: " + this);
+            final WSMessageWrapper wrapper = (WSMessageWrapper) Serializer.deserialize(message.body());
+            final String stringResult = TypeTool.trySerializeToString(wrapper.getBody());
+            if (stringResult != null) {
+                vertx.eventBus().send(wrapper.getEndpoint().getTextHandlerId(), stringResult);
+            } else {
+                vertx.eventBus().send(wrapper.getEndpoint().getBinaryHandlerId(), Serializer.serialize(wrapper.getBody()));
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    @Override
+    public void findRouteSocketInRegistryAndRemove(ServerWebSocket serverSocket) {
+        final String binaryHandlerID = serverSocket.binaryHandlerID();
+        final String textHandlerID = serverSocket.textHandlerID();
+        this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap(WS_REGISTRY, onSuccess(registryMap -> {
+                    vertx.sharedData().getLockWithTimeout(WS_LOCK, 90000L, onSuccess(lock -> {
+                        registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
+                            retrieveEndpointHolderAndRemove(serverSocket, binaryHandlerID, textHandlerID, registryMap, lock, wsEndpointHolder);
+
+                        });
+                    }));
+
+
+                })
+        );
     }
 
     private void findServiceEntryAndRegisterWS(final ServerWebSocket serverSocket, final ServiceInfoHolder resultHolder, final SharedData sharedData) {
@@ -64,14 +101,14 @@ public class WSClusterHandler {
     }
 
     private void createEndpointDefinitionAndRegister(ServerWebSocket serverSocket, final SharedData sharedData) {
-        sharedData.<String, WSEndpointHolder>getClusterWideMap("wsRegistry", onSuccess(registryMap ->
+        sharedData.<String, WSEndpointHolder>getClusterWideMap(WS_REGISTRY, onSuccess(registryMap ->
                         getEndpointHolderAndAdd(serverSocket, registryMap, sharedData)
         ));
     }
 
     private void getEndpointHolderAndAdd(ServerWebSocket serverSocket, AsyncMap<String, WSEndpointHolder> registryMap, final SharedData sharedData) {
-        sharedData.getLockWithTimeout("wsLock", 90000L, onSuccess(lock -> {
-            registryMap.get("wsEndpointHolder", wsEndpointHolder -> {
+        sharedData.getLockWithTimeout(WS_LOCK, 90000L, onSuccess(lock -> {
+            registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
                 if (wsEndpointHolder.succeeded()) {
                     updateWSEndpointHolder(serverSocket, registryMap, lock, wsEndpointHolder);
                 } else {
@@ -102,7 +139,7 @@ public class WSClusterHandler {
     private void createEntryAndAddDefinition(ServerWebSocket serverSocket, EventBus eventBus, String path, WSEndpoint endpoint, AsyncMap<String, WSEndpointHolder> registryMap, Lock writeLock) {
         final WSEndpointHolder holder = new WSEndpointHolder();
         holder.add(endpoint);
-        registryMap.put("wsEndpointHolder", holder, s -> {
+        registryMap.put(WS_ENDPOINT_HOLDER, holder, s -> {
                     writeLock.release();
                     if (s.succeeded()) {
                         log("OK ADD: " + serverSocket.binaryHandlerID() + "  Thread" + Thread.currentThread());
@@ -116,7 +153,7 @@ public class WSClusterHandler {
     private void addDefinitionToRegistry(ServerWebSocket serverSocket, EventBus eventBus, String path, WSEndpoint endpoint, AsyncMap<String, WSEndpointHolder> registryMap, WSEndpointHolder wsEndpointHolder, Lock writeLock) {
         final WSEndpointHolder holder = wsEndpointHolder;
         holder.add(endpoint);
-        registryMap.replace("wsEndpointHolder", holder, s -> {
+        registryMap.replace(WS_ENDPOINT_HOLDER, holder, s -> {
                     writeLock.release();
                     if (s.succeeded()) {
                         log("OK REPLACE: " + serverSocket.binaryHandlerID() + "  Thread" + Thread.currentThread());
@@ -143,21 +180,6 @@ public class WSClusterHandler {
     }
 
 
-    public void findRouteSocketInRegistryAndRemove(ServerWebSocket serverSocket) {
-        final String binaryHandlerID = serverSocket.binaryHandlerID();
-        final String textHandlerID = serverSocket.textHandlerID();
-        this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap("wsRegistry", onSuccess(registryMap -> {
-                    vertx.sharedData().getLockWithTimeout("wsLock", 90000L, onSuccess(lock -> {
-                        registryMap.get("wsEndpointHolder", wsEndpointHolder -> {
-                            retrieveEndpointHolderAndRemove(serverSocket, binaryHandlerID, textHandlerID, registryMap, lock, wsEndpointHolder);
-
-                        });
-                    }));
-
-
-                })
-        );
-    }
 
     private void retrieveEndpointHolderAndRemove(ServerWebSocket serverSocket, String binaryHandlerID, String textHandlerID, AsyncMap<String, WSEndpointHolder> registryMap, Lock lock, AsyncResult<WSEndpointHolder> wsEndpointHolder) {
         if (wsEndpointHolder.succeeded()) {
@@ -177,7 +199,7 @@ public class WSClusterHandler {
         if (first.isPresent()) {
             first.ifPresent(endpoint -> {
                 wsEndpointHolder.remove(endpoint);
-                registryMap.replace("wsEndpointHolder", wsEndpointHolder, replaceHolder -> {
+                registryMap.replace(WS_ENDPOINT_HOLDER, wsEndpointHolder, replaceHolder -> {
                     lock.release();
                     log("OK REMOVE: " + serverSocket.binaryHandlerID() + "  succeed:" + replaceHolder.succeeded());
 
@@ -188,23 +210,7 @@ public class WSClusterHandler {
         }
     }
 
-    public void replyToWSCaller(Message<byte[]> message) {
-        try {
-            log("REDIRECT: " + this);
-            final WSMessageWrapper wrapper = (WSMessageWrapper) Serializer.deserialize(message.body());
-            final String stringResult = TypeTool.trySerializeToString(wrapper.getBody());
-            if (stringResult != null) {
-                vertx.eventBus().send(wrapper.getEndpoint().getTextHandlerId(), stringResult);
-            } else {
-                vertx.eventBus().send(wrapper.getEndpoint().getBinaryHandlerId(), Serializer.serialize(wrapper.getBody()));
-            }
 
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-    }
 
     public void replyToAllWS(Message<byte[]> message) {
         try {
@@ -212,8 +218,8 @@ public class WSClusterHandler {
             final WSMessageWrapper wrapper = (WSMessageWrapper) Serializer.deserialize(message.body());
             final String stringResult = TypeTool.trySerializeToString(wrapper.getBody());
             final byte[] payload = stringResult != null ? stringResult.getBytes() : Serializer.serialize(wrapper.getBody());
-            this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap("wsRegistry", onSuccess(registryMap -> {
-                        registryMap.get("wsEndpointHolder", wsEndpointHolder -> {
+            this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap(WS_REGISTRY, onSuccess(registryMap -> {
+                        registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
                             if (wsEndpointHolder.succeeded() && wsEndpointHolder.result() != null) {
                                 final List<WSEndpoint> all = wsEndpointHolder.result().getAll();
                                 all.stream().filter(endP -> {
@@ -241,17 +247,6 @@ public class WSClusterHandler {
         }
     }
 
-
-    private <T> Handler<AsyncResult<T>> onSuccess(Consumer<T> consumer) {
-        return result -> {
-            if (result.failed()) {
-                result.cause().printStackTrace();
-
-            } else {
-                consumer.accept(result.result());
-            }
-        };
-    }
 
     private void log(final String value) {
         log.info(value);

@@ -2,6 +2,7 @@ package org.jacpfx.vertx.registry;
 
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.Message;
@@ -10,13 +11,16 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
 import io.vertx.core.shareddata.AsyncMap;
+import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.Serializer;
 import org.jacpfx.common.ServiceInfo;
 import org.jacpfx.common.ServiceInfoHolder;
+import org.jacpfx.vertx.util.GlobalKeyHolder;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.List;
 import java.util.TimeZone;
 import java.util.function.Consumer;
 
@@ -31,24 +35,26 @@ public class ServiceRegistry extends AbstractVerticle {
     private static final long DEFAULT_TIMEOUT = 50000;
     private static final long DEFAULT_PING_TIME = 10000;
     private static final long DEFAULT_SWEEP_TIME = 0;
-    private static final String SERVICE_REGISTRY_GET = "services.registry.get";
-    public static final String SERVICE_REGISTRY_REGISTER = "services.registry.register";
+
 
 
     private long expiration_age = DEFAULT_EXPIRATION_AGE;
     private long ping_time = DEFAULT_PING_TIME;
     private long sweep_time = DEFAULT_SWEEP_TIME;
     private long timeout_time = DEFAULT_TIMEOUT;
+    private String serviceRegisterPath;
+    private String serviceUnRegisterPath;
 
 
     @Override
-    public void start() {
+    public void start(Future<Void> startFuture) {
         log.info("Service registry started.");
 
         initConfiguration(getConfig());
-        vertx.eventBus().consumer(SERVICE_REGISTRY_REGISTER, this::serviceRegister);
-        vertx.eventBus().consumer(SERVICE_REGISTRY_GET, this::getServicesInfo);
+        vertx.eventBus().consumer(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, this::serviceRegister);
+        vertx.eventBus().consumer(GlobalKeyHolder.SERVICE_REGISTRY_GET, this::getServicesInfo);
         pingService();
+        startFuture.complete();
     }
 
     private void initConfiguration(JsonObject config) {
@@ -56,13 +62,15 @@ public class ServiceRegistry extends AbstractVerticle {
         ping_time = config.getLong("ping", DEFAULT_PING_TIME);
         sweep_time = config.getLong("sweep", DEFAULT_SWEEP_TIME);
         timeout_time = config.getLong("timeout", DEFAULT_TIMEOUT);
+        serviceRegisterPath = config.getString("serviceRegisterPath", GlobalKeyHolder.SERVICE_REGISTER_HANDLER);
+        serviceUnRegisterPath = config.getString("serviceUnRegisterPath", GlobalKeyHolder.SERVICE_UNREGISTER_HANDLER);
 
     }
 
     private void getServicesInfo(Message<JsonObject> message) {
         log.info("service info: " + message.body());
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
-                        resultMap.get("serviceHolder", onSuccess(resultHolder -> {
+                        resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(resultHolder -> {
                             if (resultHolder != null) {
                                 message.reply(resultHolder.getServiceInfo());
                             } else {
@@ -75,9 +83,11 @@ public class ServiceRegistry extends AbstractVerticle {
     protected <T> Handler<AsyncResult<T>> onSuccess(Consumer<T> consumer) {
         return result -> {
             if (result.failed()) {
+                log.info("failed: "+result.cause());
                 result.cause().printStackTrace();
 
             } else {
+                log.info("ok : "+result.result());
                 consumer.accept(result.result());
             }
         };
@@ -90,7 +100,7 @@ public class ServiceRegistry extends AbstractVerticle {
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap -> {
                     log.info("got map");
                     // TODO ... this operation should  be locked !!!
-                    resultMap.get("serviceHolder", onSuccess(resultHolder -> {
+                    resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(resultHolder -> {
                         log.info("got result holder");
                         if (resultHolder != null) {
                             addServiceEntry(resultMap, info, resultHolder);
@@ -117,7 +127,7 @@ public class ServiceRegistry extends AbstractVerticle {
     private void addServiceEntry(final AsyncMap resultMap, final ServiceInfo info, final ServiceInfoHolder holder) {
         holder.add(info);
         log.info("update result holder");
-        resultMap.replace("serviceHolder", holder, onSuccess(s -> {
+        resultMap.replace(GlobalKeyHolder.SERVICE_HOLDER, holder, onSuccess(s -> {
             publishToEntryPoint(info);
             log.info("Register REPLACE: " + info);
         }));
@@ -126,31 +136,37 @@ public class ServiceRegistry extends AbstractVerticle {
     private void createNewEntry(final AsyncMap resultMap, final ServiceInfo info, final ServiceInfoHolder holder) {
         holder.add(info);
         log.info("add result holder");
-        resultMap.put("serviceHolder", holder, onSuccess(s -> {
+        resultMap.put(GlobalKeyHolder.SERVICE_HOLDER, holder, onSuccess(s -> {
             publishToEntryPoint(info);
             log.info("Register ADD: " + info);
         }));
     }
 
     private void publishToEntryPoint(ServiceInfo info) {
-        vertx.eventBus().publish("services.register.handler", info);
+        vertx.eventBus().publish(serviceRegisterPath, info);
     }
 
 
     private void pingService() {
         vertx.sharedData().getCounter("registry-timer-counter", onSuccess(counter -> counter.incrementAndGet(onSuccess(val -> {
-            log.info(val);
+            log.info("registry-timer-counter: "+val);
             if (val <= 1) {
-                vertx.setPeriodic(ping_time, timerID -> this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
-                                resultMap.get("serviceHolder", onSuccess(holder -> {
-                                    log.info("get Holder " + holder + " this:" + this);
-                                    if (holder != null) {
-                                        holder.getAll().forEach(this::pingService);
+                vertx.setPeriodic(ping_time, timerID -> {
+                    log.info("ping_time: "+timerID);
+                    final SharedData sharedData = this.vertx.sharedData();
+                    sharedData.<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->  {
+                            log.info("resultMap " + resultMap );
+                                    resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(holder -> {
+                                        log.info("get Holder " + holder + " this:" + this);
+                                        if (holder != null) {
+                                            final List<ServiceInfo> serviceHolders = holder.getAll();
+                                            serviceHolders.forEach(this::pingService);
 
-                                    }
+                                        }
 
-                                }))
-                )));
+                                    })); }
+                    ));
+                });
             }
         }))));
 
@@ -178,9 +194,10 @@ public class ServiceRegistry extends AbstractVerticle {
 
     private void updateServiceInfo(final ServiceInfo info) {
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
-                        resultMap.get("serviceHolder", onSuccess(holder -> {
+                        resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(holder -> {
+                            log.info("register service info "+info);
                             holder.replace(info);
-                            resultMap.replace("serviceHolder", holder, onSuccess(s -> log.info("update services: ")));
+                            resultMap.replace(GlobalKeyHolder.SERVICE_HOLDER, holder, onSuccess(s -> log.info("update services: ")));
                         }))
         ));
 
@@ -189,7 +206,7 @@ public class ServiceRegistry extends AbstractVerticle {
 
     private void unregisterServiceAtRouter(final ServiceInfo info) {
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap("registry", onSuccess(resultMap ->
-                        resultMap.get("serviceHolder", onSuccess(holder ->
+                        resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(holder ->
                                         removeAndUpdateServiceInfo(info, resultMap, holder)
                         ))
         ));
@@ -199,7 +216,7 @@ public class ServiceRegistry extends AbstractVerticle {
 
     private void removeAndUpdateServiceInfo(ServiceInfo info, AsyncMap<String, ServiceInfoHolder> resultMap, ServiceInfoHolder holder) {
         holder.remove(info);
-        resultMap.replace("serviceHolder", holder, t -> {
+        resultMap.replace(GlobalKeyHolder.SERVICE_HOLDER, holder, t -> {
             if (t.succeeded()) {
                 resetServiceCounterAndPublish(info);
 
@@ -210,7 +227,7 @@ public class ServiceRegistry extends AbstractVerticle {
     private void resetServiceCounterAndPublish(ServiceInfo info) {
         vertx.sharedData().getCounter(info.getServiceName(), onSuccess(counter -> counter.get(onSuccess(c -> {
             counter.compareAndSet(c, 0, onSuccess(val ->
-                            vertx.eventBus().publish("services.unregister.handler", info)
+                            vertx.eventBus().publish(serviceUnRegisterPath, info)
             ));
         }))));
     }
