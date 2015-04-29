@@ -14,6 +14,7 @@ import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Type;
 import org.jacpfx.vertx.services.ServiceVerticle;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
 
 import javax.ws.rs.ApplicationPath;
@@ -93,6 +94,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
 
 
     @Test
+    @Ignore
     public void simpleConnectAndWrite() throws InterruptedException {
 
 
@@ -116,6 +118,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
     }
 
     @Test
+    @Ignore
     public void simpleConnectAndAsyncWrite() throws InterruptedException {
 
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/asyncReply", ws -> {
@@ -138,6 +141,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
     }
 
     @Test
+    @Ignore
     public void simpleConnectOnTwoThreads() throws InterruptedException {
         ExecutorService s = Executors.newFixedThreadPool(2);
         CountDownLatch latchMain = new CountDownLatch(2);
@@ -169,6 +173,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
     }
 
     @Test
+    @Ignore
     public void simpleConnectOnTenThreads() throws InterruptedException {
 
         ExecutorService s = Executors.newFixedThreadPool(10);
@@ -210,6 +215,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
     }
 
     @Test
+    @Ignore
     public void simpleMutilpeReply() throws InterruptedException {
         final AtomicInteger counter = new AtomicInteger(0);
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/wsEndpintTwo", ws -> {
@@ -233,6 +239,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
     }
 
     @Test
+    @Ignore
     public void simpleMutilpeReplyToAll() throws InterruptedException {
         final AtomicInteger counter = new AtomicInteger(0);
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/wsEndpintThree", ws -> {
@@ -255,6 +262,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
     }
 
     @Test
+    @Ignore
     public void simpleMutilpeReplyToAll_1() throws InterruptedException {
         final AtomicInteger counter = new AtomicInteger(0);
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/wsEndpintFour", ws -> {
@@ -275,6 +283,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
     }
 
     @Test
+    @Ignore
     public void simpleMutilpeReplyToAllThreaded() throws InterruptedException {
         ExecutorService s = Executors.newFixedThreadPool(10);
         final CountDownLatch latch = new CountDownLatch(2);
