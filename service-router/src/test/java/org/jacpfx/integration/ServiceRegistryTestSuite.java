@@ -7,8 +7,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.Suite;
 @RunWith(Suite.class)
 @Suite.SuiteClasses({
-        ServiceRegistryTest.class,
-        ServiceRegistryPingTest.class
+        ServiceRegistryTest.class
 })
 
 public class ServiceRegistryTestSuite {

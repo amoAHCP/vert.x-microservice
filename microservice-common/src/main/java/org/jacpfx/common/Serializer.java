@@ -10,6 +10,7 @@ public class Serializer {
         final ByteArrayOutputStream b = new ByteArrayOutputStream();
         final ObjectOutputStream o = new ObjectOutputStream(b);
         o.writeObject(obj);
+        o.close();
         return b.toByteArray();
     }
 

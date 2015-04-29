@@ -11,15 +11,18 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
 import org.jacpfx.common.*;
+import org.jacpfx.common.Parameter;
+import org.jacpfx.common.spi.GSonConverter;
+import org.jacpfx.common.spi.JSONConverter;
 
 import javax.ws.rs.*;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
+import java.lang.reflect.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.MissingResourceException;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -49,16 +52,16 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     private void registerService() {
-        vertx.sharedData().getCounter(serviceName(),onSuccess(counter-> {
-            counter.incrementAndGet(onSuccess(val-> {
+        vertx.sharedData().getCounter(serviceName(), onSuccess(counter -> {
+            counter.incrementAndGet(onSuccess(val -> {
                 log.info(val);
-                if(val<=1)
+                if (val <= 1)
                     // register service at service registry
                     try {
-
-                        vertx.eventBus().send("services.registry.register", Serializer.serialize(descriptor), onSuccess(result->{
-
-                        }));
+                        //GlobalKeyHolder.SERVICE_REGISTRY_REGISTER
+                        vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(descriptor), handler -> {
+                            System.out.println("Register Service: " + handler.succeeded());
+                        });
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -96,10 +99,12 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     private Operation mapServiceMethod(Method method) {
         final Path path = method.getDeclaredAnnotation(Path.class);
         final Produces mime = method.getDeclaredAnnotation(Produces.class);
+        final Consumes consumes = method.getDeclaredAnnotation(Consumes.class);
         final OperationType opType = method.getDeclaredAnnotation(OperationType.class);
         if (opType == null)
             throw new MissingResourceException("missing OperationType ", this.getClass().getName(), "");
         final String[] mimeTypes = mime != null ? mime.value() : null;
+        final String[] consumeTypes = consumes!=null? consumes.value() : null;
         final String url = serviceName().concat(path.value());
         final List<String> parameters = new ArrayList<>();
 
@@ -120,7 +125,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                 break;
         }
 
-        return new Operation(url,opType.value().name(),mimeTypes,parameters.toArray(new String[parameters.size()]));
+        return new Operation(url,opType.value().name(),mimeTypes,consumeTypes,parameters.toArray(new String[parameters.size()]));
     }
 
     /**
@@ -231,6 +236,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     private void genericWSHandler(Message<byte[]> m, Method method) {
         try {
             System.out.println("got WS message");
+            // TODO check @Consumes annotation to serialize the correct way
             final Object replyValue = method.invoke(this, invokeWSParameters(m, method));
             // TODO ws services should not have a reply value!!
         } catch (IllegalAccessException e) {
@@ -245,15 +251,13 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         final WSDataWrapper wrapper = getWSDataWrapper(m);
         final java.lang.reflect.Parameter[] parameters = method.getParameters();
         final Object[] parameterResult = new Object[parameters.length];
-        this.vertx.getOrCreateContext().runOnContext(event -> {
-
-        });
+        final Consumes consumes = method.getDeclaredAnnotation(Consumes.class);
         int i = 0;
         for(java.lang.reflect.Parameter p :parameters) {
              if(p.getType().equals(MessageReply.class)) {
                  parameterResult[i] = new MessageReply(wrapper.getEndpoint(),this.vertx.eventBus());
              }  else {
-                 putTypedParameter(parameterResult,p,i,wrapper.getData());
+                 putTypedParameter(consumes,parameterResult,p,i,wrapper.getData());
              }
 
             i++;
@@ -356,17 +360,69 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         }
     }
 
-    private void putTypedParameter(final Object[] parameterResult,final java.lang.reflect.Parameter p,final int counter,final byte[] myParameter) {
-            parameterResult[counter] = new String(myParameter);//p.getType().cast(Serializer.deserialize(myParameter)) ;
+    private void putTypedParameter(final Consumes consumes,final Object[] parameterResult,final java.lang.reflect.Parameter p,final int counter,final byte[] myParameter) {
+        if(p.getType().equals(String.class)){
+            parameterResult[counter] = new String(myParameter);
+        }  else {
+            try {
+                // TODO analyze @Consumes annotation, check for String Integer, or simply cast
+               if(isBinary(consumes)) {
+                   handleBinaryWSParameter(parameterResult, p, counter, myParameter);
+               } else if(isJSON(consumes)) {
+                   handleJSONWSParameter(parameterResult, p, counter, myParameter);
+               } else {
+                   // check for application/octet-stream or application/json
+                   handleBinaryWSParameter(parameterResult, p, counter, myParameter);
+               }
 
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (ClassNotFoundException e) {
+                e.printStackTrace();
+            }
+        }
+
+
+    }
+
+    private void handleJSONWSParameter(Object[] parameterResult, java.lang.reflect.Parameter p, int counter, byte[] myParameter) {
+        final String jsonString = new String(myParameter);
+        if(p.getType().equals(String.class)) {
+            parameterResult[counter] = jsonString;
+        }else {
+            parameterResult[counter] = getConverter().convertToObject(jsonString,p.getType());
+        }
+    }
+
+    private void handleBinaryWSParameter(Object[] parameterResult, java.lang.reflect.Parameter p, int counter, byte[] myParameter) throws IOException, ClassNotFoundException {
+        Object o = Serializer.deserialize(myParameter);
+        parameterResult[counter] = p.getType().cast(o) ;
+    }
+
+    private JSONConverter getConverter() {
+        // TODO privide impl. by SPI
+        return new GSonConverter();
+    }
+
+    private boolean isBinary(final Consumes consumes) {
+        if(consumes==null || consumes.value().length==0) return false;
+        Optional<String> result = Stream.of(consumes.value()).filter(val -> val.equalsIgnoreCase("application/octet-stream")).findFirst();
+        if(result.isPresent()) return true;
+        return false;
+    }
+
+    private boolean isJSON(final Consumes consumes) {
+        if(consumes==null || consumes.value().length==0) return false;
+        Optional<String> result = Stream.of(consumes.value()).filter(val -> val.equalsIgnoreCase("application/json")).findFirst();
+        if(result.isPresent()) return true;
+        return false;
     }
 
 
     private void info(Message m) {
 
         try {
-            m.reply(Serializer.serialize(getServiceDescriptor()),new DeliveryOptions().setSendTimeout(10000));
-            System.out.println("reply to: " + m.body());
+            m.reply(Serializer.serialize(getServiceDescriptor()), new DeliveryOptions().setSendTimeout(10000));
         } catch (IOException e) {
             e.printStackTrace();
         }  catch (Exception e) {

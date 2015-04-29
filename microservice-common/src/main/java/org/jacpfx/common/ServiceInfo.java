@@ -75,7 +75,7 @@ public class ServiceInfo implements Serializable{
     }
 
     private static JsonObject createOperation(Operation op) {
-        return JSONTool.createOperationObject(op.getUrl(), op.getType(), op.getMime(), op.getParameter());
+        return JSONTool.createOperationObject(op.getUrl(), op.getType(), op.getMime(), op.getConsumes(),op.getParameter());
     }
 
     @Override
@@ -96,5 +96,14 @@ public class ServiceInfo implements Serializable{
         int result = serviceName.hashCode();
         result = 31 * result + (operations != null ? Arrays.hashCode(operations) : 0);
         return result;
+    }
+
+    @Override
+    public String toString() {
+        return "ServiceInfo{" +
+                "serviceName='" + serviceName + '\'' +
+                ", lastConnection='" + lastConnection + '\'' +
+                ", operations=" + Arrays.toString(operations) +
+                '}';
     }
 }

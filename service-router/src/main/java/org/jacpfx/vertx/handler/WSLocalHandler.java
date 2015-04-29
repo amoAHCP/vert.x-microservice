@@ -11,7 +11,7 @@ import io.vertx.core.shareddata.LocalMap;
 import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.*;
 import org.jacpfx.vertx.entrypoint.ServiceEntryPoint;
-import org.jacpfx.vertx.util.GlobalKeyHolder;
+import org.jacpfx.common.GlobalKeyHolder;
 
 import java.io.IOException;
 import java.util.Arrays;

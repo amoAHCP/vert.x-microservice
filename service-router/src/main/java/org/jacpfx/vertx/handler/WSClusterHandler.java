@@ -9,11 +9,9 @@ import io.vertx.core.http.ServerWebSocket;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
 import io.vertx.core.shareddata.AsyncMap;
-import io.vertx.core.shareddata.Lock;
 import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.*;
 import org.jacpfx.vertx.entrypoint.ServiceEntryPoint;
-import org.jacpfx.vertx.util.GlobalKeyHolder;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -67,14 +65,10 @@ public class WSClusterHandler implements WebSocketHandler {
         final String binaryHandlerID = serverSocket.binaryHandlerID();
         final String textHandlerID = serverSocket.textHandlerID();
         this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap(WS_REGISTRY, onSuccess(registryMap -> {
-                    vertx.sharedData().getLockWithTimeout(WS_LOCK, 90000L, onSuccess(lock -> {
-                        registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
-                            retrieveEndpointHolderAndRemove(serverSocket, binaryHandlerID, textHandlerID, registryMap, lock, wsEndpointHolder);
+                    registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
+                        retrieveEndpointHolderAndRemove(serverSocket, binaryHandlerID, textHandlerID, registryMap, wsEndpointHolder);
 
-                        });
-                    }));
-
-
+                    });
                 })
         );
     }
@@ -107,21 +101,15 @@ public class WSClusterHandler implements WebSocketHandler {
     }
 
     private void getEndpointHolderAndAdd(ServerWebSocket serverSocket, AsyncMap<String, WSEndpointHolder> registryMap, final SharedData sharedData) {
-        sharedData.getLockWithTimeout(WS_LOCK, 90000L, onSuccess(lock -> {
-            registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
-                if (wsEndpointHolder.succeeded()) {
-                    updateWSEndpointHolder(serverSocket, registryMap, lock, wsEndpointHolder);
-                } else {
-                    lock.release();
-                }
-            });
-
-
-        }));
+        registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
+            if (wsEndpointHolder.succeeded()) {
+                updateWSEndpointHolder(serverSocket, registryMap, wsEndpointHolder);
+            }
+        });
 
     }
 
-    private void updateWSEndpointHolder(ServerWebSocket serverSocket, AsyncMap<String, WSEndpointHolder> registryMap, Lock lock, AsyncResult<WSEndpointHolder> wsEndpointHolder) {
+    private void updateWSEndpointHolder(ServerWebSocket serverSocket, AsyncMap<String, WSEndpointHolder> registryMap, AsyncResult<WSEndpointHolder> wsEndpointHolder) {
         log("add entry: " + Thread.currentThread());
         final String binaryHandlerId = serverSocket.binaryHandlerID();
         final String textHandlerId = serverSocket.textHandlerID();
@@ -130,17 +118,16 @@ public class WSClusterHandler implements WebSocketHandler {
         final WSEndpoint endpoint = new WSEndpoint(binaryHandlerId, textHandlerId, path);
         final WSEndpointHolder result = wsEndpointHolder.result();
         if (result != null) {
-            addDefinitionToRegistry(serverSocket, eventBus, path, endpoint, registryMap, result, lock);
+            addDefinitionToRegistry(serverSocket, eventBus, path, endpoint, registryMap, result);
         } else {
-            createEntryAndAddDefinition(serverSocket, eventBus, path, endpoint, registryMap, lock);
+            createEntryAndAddDefinition(serverSocket, eventBus, path, endpoint, registryMap);
         }
     }
 
-    private void createEntryAndAddDefinition(ServerWebSocket serverSocket, EventBus eventBus, String path, WSEndpoint endpoint, AsyncMap<String, WSEndpointHolder> registryMap, Lock writeLock) {
+    private void createEntryAndAddDefinition(ServerWebSocket serverSocket, EventBus eventBus, String path, WSEndpoint endpoint, AsyncMap<String, WSEndpointHolder> registryMap) {
         final WSEndpointHolder holder = new WSEndpointHolder();
         holder.add(endpoint);
         registryMap.put(WS_ENDPOINT_HOLDER, holder, s -> {
-                    writeLock.release();
                     if (s.succeeded()) {
                         log("OK ADD: " + serverSocket.binaryHandlerID() + "  Thread" + Thread.currentThread());
                         sendToWSService(serverSocket, eventBus, path, endpoint);
@@ -150,11 +137,10 @@ public class WSClusterHandler implements WebSocketHandler {
         );
     }
 
-    private void addDefinitionToRegistry(ServerWebSocket serverSocket, EventBus eventBus, String path, WSEndpoint endpoint, AsyncMap<String, WSEndpointHolder> registryMap, WSEndpointHolder wsEndpointHolder, Lock writeLock) {
+    private void addDefinitionToRegistry(ServerWebSocket serverSocket, EventBus eventBus, String path, WSEndpoint endpoint, AsyncMap<String, WSEndpointHolder> registryMap, WSEndpointHolder wsEndpointHolder) {
         final WSEndpointHolder holder = wsEndpointHolder;
         holder.add(endpoint);
         registryMap.replace(WS_ENDPOINT_HOLDER, holder, s -> {
-                    writeLock.release();
                     if (s.succeeded()) {
                         log("OK REPLACE: " + serverSocket.binaryHandlerID() + "  Thread" + Thread.currentThread());
                         sendToWSService(serverSocket, eventBus, path, endpoint);
@@ -166,7 +152,7 @@ public class WSClusterHandler implements WebSocketHandler {
     private void sendToWSService(final ServerWebSocket serverSocket, final EventBus eventBus, final String path, final WSEndpoint endpoint) {
         serverSocket.handler(handler -> {
                     try {
-                        log("send WS:+ " + endpoint.getUrl());
+                        System.out.println("send WS:+ " + endpoint.getUrl());
                         eventBus.send(path, Serializer.serialize(new WSDataWrapper(endpoint, handler.getBytes())), new DeliveryOptions().setSendTimeout(ServiceEntryPoint.DEFAULT_SERVICE_TIMEOUT));
                     } catch (IOException e) {
                         e.printStackTrace();
@@ -181,32 +167,27 @@ public class WSClusterHandler implements WebSocketHandler {
 
 
 
-    private void retrieveEndpointHolderAndRemove(ServerWebSocket serverSocket, String binaryHandlerID, String textHandlerID, AsyncMap<String, WSEndpointHolder> registryMap, Lock lock, AsyncResult<WSEndpointHolder> wsEndpointHolder) {
+    private void retrieveEndpointHolderAndRemove(ServerWebSocket serverSocket, String binaryHandlerID, String textHandlerID, AsyncMap<String, WSEndpointHolder> registryMap, AsyncResult<WSEndpointHolder> wsEndpointHolder) {
         if (wsEndpointHolder.succeeded()) {
             final WSEndpointHolder result = wsEndpointHolder.result();
             if (result != null) {
-                findEndpointAndRemove(serverSocket, binaryHandlerID, textHandlerID, registryMap, lock, result);
+                findEndpointAndRemove(serverSocket, binaryHandlerID, textHandlerID, registryMap,result);
 
             }
-        } else {
-            lock.release();
         }
     }
 
-    private void findEndpointAndRemove(ServerWebSocket serverSocket, String binaryHandlerID, String textHandlerID, AsyncMap<String, WSEndpointHolder> registryMap, Lock lock, WSEndpointHolder wsEndpointHolder) {
+    private void findEndpointAndRemove(ServerWebSocket serverSocket, String binaryHandlerID, String textHandlerID, AsyncMap<String, WSEndpointHolder> registryMap, WSEndpointHolder wsEndpointHolder) {
         final List<WSEndpoint> all = wsEndpointHolder.getAll();
         final Optional<WSEndpoint> first = all.stream().filter(e -> e.getBinaryHandlerId().equals(binaryHandlerID) && e.getTextHandlerId().equals(textHandlerID)).findFirst();
         if (first.isPresent()) {
             first.ifPresent(endpoint -> {
                 wsEndpointHolder.remove(endpoint);
                 registryMap.replace(WS_ENDPOINT_HOLDER, wsEndpointHolder, replaceHolder -> {
-                    lock.release();
                     log("OK REMOVE: " + serverSocket.binaryHandlerID() + "  succeed:" + replaceHolder.succeeded());
 
                 });
             });
-        } else {
-            lock.release();
         }
     }
 

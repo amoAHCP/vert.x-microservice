@@ -7,8 +7,8 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.impl.ws.WebSocketFrameImpl;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
+import io.vertx.spi.cluster.impl.hazelcast.HazelcastClusterManager;
 import io.vertx.test.core.VertxTestBase;
-import io.vertx.test.fakecluster.FakeClusterManager;
 import org.jacpfx.common.MessageReply;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Type;
@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Created by Andy Moncsek on 23.04.15.
  */
-public class WSServiceTest extends VertxTestBase {
+public class WSClusteredServiceTest extends VertxTestBase {
     private final static int MAX_RESPONSE_ELEMENTS = 4;
     public static final String SERVICE_REST_GET = "/wsService";
 
@@ -41,7 +41,7 @@ public class WSServiceTest extends VertxTestBase {
 
     @Override
     protected ClusterManager getClusterManager() {
-        return new FakeClusterManager();
+        return new HazelcastClusterManager();
     }
 
 
@@ -60,7 +60,7 @@ public class WSServiceTest extends VertxTestBase {
         CountDownLatch latch = new CountDownLatch(1);
         CountDownLatch latch2 = new CountDownLatch(1);
         DeploymentOptions options = new DeploymentOptions().setInstances(1);
-        options.setConfig(new JsonObject().put("clustered", false));
+        options.setConfig(new JsonObject().put("clustered", true));
         // Deploy the module - the System property `vertx.modulename` will contain the name of the module so you
         // don't have to hardecode it in your tests
         getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint",options, asyncResult -> {

@@ -94,6 +94,14 @@
             <artifactId>vertx-core</artifactId>
             <version>${vertx.version}</version>
         </dependency>
+
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <version>2.3.1</version>
+        </dependency>
+
+
         <!-- If you're using the Vert.x Groovy API you need this dependency -->
 
         <!-- We use services -->

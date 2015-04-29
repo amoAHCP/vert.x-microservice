@@ -13,13 +13,14 @@ import io.vertx.core.http.HttpServerRequest;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
+import org.jacpfx.common.GlobalKeyHolder;
 import org.jacpfx.common.ServiceInfo;
 import org.jacpfx.common.ServiceInfoDecoder;
 import org.jacpfx.common.Type;
 import org.jacpfx.vertx.handler.RESTHandler;
+import org.jacpfx.vertx.handler.WSClusterHandler;
 import org.jacpfx.vertx.handler.WSLocalHandler;
 import org.jacpfx.vertx.util.CustomRouteMatcher;
-import org.jacpfx.vertx.util.GlobalKeyHolder;
 import org.jacpfx.vertx.util.WebSocketRepository;
 
 import java.util.HashSet;
@@ -56,6 +57,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private String wsReplyToAllPath;
     private String serviceRegistry;
     private String host;
+    private boolean clustered;
     private int port;
     private int defaultServiceTimeout;
 
@@ -64,12 +66,19 @@ public class ServiceEntryPoint extends AbstractVerticle {
     @Override
     public void start(io.vertx.core.Future<Void> startFuture) throws Exception {
         log("START ServiceEntryPoint  THREAD: " + Thread.currentThread() + "  this:" + this);
-        wsHandler = new WSLocalHandler(this.vertx);
+        initConfiguration(getConfig());
+
+        if(clustered) {
+            wsHandler = new WSClusterHandler(this.vertx);
+        } else {
+            wsHandler = new WSLocalHandler(this.vertx);
+        }
+
         // TODO make it configureable if REST should be privided
         restHandler = new RESTHandler(routeMatcher, defaultServiceTimeout, registeredRoutes);
         vertx.eventBus().registerDefaultCodec(ServiceInfo.class, serviceInfoDecoder);
         //  vertx.eventBus().registerDefaultCodec(Parameter.class, parameterDecoder);
-        initConfiguration(getConfig());
+
 
         vertx.eventBus().consumer(wsReplyPath, (Handler<Message<byte[]>>)message->wsHandler.replyToWSCaller(message));
         vertx.eventBus().consumer(wsReplyToAllPath, (Handler<Message<byte[]>>)message->wsHandler.replyToAllWS(message));
@@ -107,7 +116,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
         wsReplyPath = config.getString("wsReplyPath", WS_REPLY);
         wsReplyToAllPath = config.getString("wsReplyToAllPath", WS_REPLY_TO_ALL);
         serviceRegistry = config.getString("serviceRegistry", SERVICE_REGISTRY);
-
+        clustered = config.getBoolean("clustered",false);
         host = config.getString("host", HOST);
         port = config.getInteger("port", PORT);
         defaultServiceTimeout = config.getInteger("defaultServiceTimeout", DEFAULT_SERVICE_TIMEOUT);
@@ -180,7 +189,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
     private void registerWebSocketHandler(HttpServer server) {
         server.websocketHandler((serverSocket) -> {
-            log("connect socket");
+            System.out.println("connect socket to path: " + serverSocket.path());
             serverSocket.pause();
             serverSocket.exceptionHandler(ex -> {
                 //TODO
