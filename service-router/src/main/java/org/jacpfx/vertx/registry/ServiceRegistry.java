@@ -29,6 +29,13 @@ import java.util.function.Consumer;
  * Created by amo on 22.10.14.
  */
 public class ServiceRegistry extends AbstractVerticle {
+
+    /**
+     * trenne Registry von der Heartbeat Funktionalität
+     *
+     * Bugfixing 1: error handler für WS wenn keine Route gefunden wurde
+     * 2: Startmechanismus vom ServiceVerticle compleate erst aufrufen wenn Registry OK gegeben hat  start(Feature compleate) -> createServiceInfo() -> send(info, onFinish-> comleate.compleate())
+     */
     private static final Logger log = LoggerFactory.getLogger(ServiceRegistry.class);
 
     private static final long DEFAULT_EXPIRATION_AGE = 5000;

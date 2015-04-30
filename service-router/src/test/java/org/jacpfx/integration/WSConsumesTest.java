@@ -219,6 +219,7 @@ public class WSConsumesTest extends VertxTestBase {
 
     @ApplicationPath(SERVICE_REST_GET)
     public class WsServiceOne extends ServiceVerticle {
+
         @Path("/testSimpleString")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")

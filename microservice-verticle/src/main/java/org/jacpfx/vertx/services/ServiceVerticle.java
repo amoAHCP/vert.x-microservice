@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import io.vertx.core.AbstractVerticle;
 import io.vertx.core.AsyncResult;
+import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.Message;
@@ -38,33 +39,35 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     private static final String HOST_PREFIX = "";
 
     @Override
-    public final void start() {
+    public final void start(final Future<Void> startFuture) {
         long startTime = System.currentTimeMillis();
         // collect all service operations in service for descriptor
         descriptor = createInfoObject(getAllOperationsInService(this.getClass().getDeclaredMethods()));
-
-        registerService();
-
         // register info handler
         vertx.eventBus().consumer(serviceName() + "-info", this::info);
+        registerService(startFuture);
         long endTime = System.currentTimeMillis();
         System.out.println("start time: " + (endTime - startTime) + "ms");
     }
 
-    private void registerService() {
+    private void registerService(final Future<Void> startFuture) {
         vertx.sharedData().getCounter(serviceName(), onSuccess(counter -> {
             counter.incrementAndGet(onSuccess(val -> {
                 log.info(val);
-                if (val <= 1)
+                if (val <= 1) {
                     // register service at service registry
                     try {
                         //GlobalKeyHolder.SERVICE_REGISTRY_REGISTER
                         vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(descriptor), handler -> {
                             System.out.println("Register Service: " + handler.succeeded());
+                            startFuture.complete();
                         });
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
+                } else {
+                    startFuture.complete();
+                }
             }));
         }));
     }
