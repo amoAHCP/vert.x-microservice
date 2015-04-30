@@ -66,7 +66,7 @@ public class WSConsumesTest extends VertxTestBase {
         // don't have to hardecode it in your tests
         getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint", asyncResult -> {
             // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
-            System.out.println("start entry point: " + asyncResult.succeeded());
+            System.out.println("start org.jacpfx.vertx.entrypoint.ServiceEntryPoint: " + asyncResult.succeeded());
             assertTrue(asyncResult.succeeded());
             assertNotNull("deploymentID should not be null", asyncResult.result());
             // If deployed correctly then start the tests!
@@ -76,7 +76,7 @@ public class WSConsumesTest extends VertxTestBase {
         awaitLatch(latch);
         getVertx().deployVerticle(new WsServiceOne(), options, asyncResult -> {
             // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
-            System.out.println("start service: " + asyncResult.succeeded());
+            System.out.println("start WsServiceOne: " + asyncResult.succeeded());
             assertTrue(asyncResult.succeeded());
             assertNotNull("deploymentID should not be null", asyncResult.result());
             // If deployed correctly then start the tests!
@@ -103,7 +103,7 @@ public class WSConsumesTest extends VertxTestBase {
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/testSimpleString", ws -> {
             long startTime = System.currentTimeMillis();
             ws.handler((data) -> {
-                System.out.println("client data handler 1:" + new String(data.getBytes()));
+                System.out.println("client testSimpleString:" + new String(data.getBytes()));
                 assertNotNull(data.getString(0, data.length()));
                 assertTrue(data.getString(0, data.length()).equals(message));
                 ws.close();
@@ -239,6 +239,7 @@ public class WSConsumesTest extends VertxTestBase {
         public void testSimpleObjectByJSONSerialisation(PersonOne p1, MessageReply reply) {
             reply.send(p1.getName());
         }
+
         @Path("/testSimpleObjectByBinarySerialisation")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/octet-stream")

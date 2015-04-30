@@ -7,8 +7,8 @@ import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.impl.ws.WebSocketFrameImpl;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
-import io.vertx.spi.cluster.impl.hazelcast.HazelcastClusterManager;
 import io.vertx.test.core.VertxTestBase;
+import io.vertx.test.fakecluster.FakeClusterManager;
 import org.jacpfx.common.MessageReply;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Type;
@@ -41,7 +41,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
 
     @Override
     protected ClusterManager getClusterManager() {
-        return new HazelcastClusterManager();
+        return new FakeClusterManager();
     }
 
 
@@ -65,7 +65,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         // don't have to hardecode it in your tests
         getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint",options, asyncResult -> {
             // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
-            System.out.println("start entry point: " + asyncResult.succeeded());
+            System.out.println("start org.jacpfx.vertx.entrypoint.ServiceEntryPoint: " + asyncResult.succeeded());
             assertTrue(asyncResult.succeeded());
             assertNotNull("deploymentID should not be null", asyncResult.result());
             // If deployed correctly then start the tests!
@@ -75,7 +75,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         awaitLatch(latch);
         getVertx().deployVerticle(new WsServiceOne(), options, asyncResult -> {
             // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
-            System.out.println("start service: " + asyncResult.succeeded());
+            System.out.println("start WsServiceOne: " + asyncResult.succeeded());
             assertTrue(asyncResult.succeeded());
             assertNotNull("deploymentID should not be null", asyncResult.result());
             // If deployed correctly then start the tests!
@@ -100,7 +100,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/hello", ws -> {
             long startTime = System.currentTimeMillis();
             ws.handler((data) -> {
-                System.out.println("client data handler 1:" + new String(data.getBytes()));
+                System.out.println("client data simpleConnectAndWrite:" + new String(data.getBytes()));
                 assertNotNull(data.getString(0, data.length()));
                 ws.close();
                 long endTime = System.currentTimeMillis();
@@ -122,7 +122,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/asyncReply", ws -> {
             long startTime = System.currentTimeMillis();
             ws.handler((data) -> {
-                System.out.println("client data handler 1:" + new String(data.getBytes()));
+                System.out.println("client data simpleConnectAndAsyncWrite:" + new String(data.getBytes()));
                 assertNotNull(data.getString(0, data.length()));
                 ws.close();
                 long endTime = System.currentTimeMillis();
@@ -147,7 +147,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
             getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/hello", ws -> {
                 long startTime = System.currentTimeMillis();
                 ws.handler((data) -> {
-                    System.out.println("client data handler 2:" + new String(data.getBytes()));
+                    System.out.println("client data simpleConnectOnTwoThreads:" + new String(data.getBytes()));
                     assertNotNull(data.getString(0, data.length()));
                     ws.close();
                     latchMain.countDown();
@@ -171,38 +171,35 @@ public class WSClusteredServiceTest extends VertxTestBase {
 
     @Test
     public void simpleConnectOnTenThreads() throws InterruptedException {
+        int counter =100;
+        ExecutorService s = Executors.newFixedThreadPool(counter);
+        CountDownLatch latchMain = new CountDownLatch(counter);
 
-        ExecutorService s = Executors.newFixedThreadPool(10);
-        CountDownLatch latchMain = new CountDownLatch(10);
-        Runnable r = () -> {
 
-            getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/hello", ws -> {
-                long startTime = System.currentTimeMillis();
-                ws.handler((data) -> {
-                    System.out.println("client data handler 3:" + new String(data.getBytes()));
-                    assertNotNull(data.getString(0, data.length()));
-                    ws.close();
-                    latchMain.countDown();
-                    long endTime = System.currentTimeMillis();
-                    System.out.println("round trip time simpleConnectOnTenThreads: " + (endTime - startTime) + "ms");
+        for(int i =0; i<=counter; i++) {
+            Runnable r = () -> {
+
+                getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/hello", ws -> {
+                    long startTime = System.currentTimeMillis();
+                    ws.handler((data) -> {
+                        System.out.println("client data simpleConnectOnTenThreads:" + new String(data.getBytes()));
+                        assertNotNull(data.getString(0, data.length()));
+                        ws.close();
+                        latchMain.countDown();
+                        long endTime = System.currentTimeMillis();
+                        System.out.println("round trip time simpleConnectOnTenThreads: " + (endTime - startTime) + "ms");
+                    });
+
+                    ws.writeFrame(new WebSocketFrameImpl("zhello"));
                 });
 
-                ws.writeFrame(new WebSocketFrameImpl("zhello"));
-            });
+
+            };
+
+            s.submit(r);
+        }
 
 
-        };
-
-        s.submit(r);
-        s.submit(r);
-        s.submit(r);
-        s.submit(r);
-        s.submit(r);
-        s.submit(r);
-        s.submit(r);
-        s.submit(r);
-        s.submit(r);
-        s.submit(r);
 
         latchMain.await();
 
@@ -216,7 +213,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/wsEndpintTwo", ws -> {
 
             ws.handler((data) -> {
-                System.out.println("client data handler 4:" + new String(data.getBytes()));
+                System.out.println("client data simpleMutilpeReply:" + new String(data.getBytes()));
                 assertNotNull(data.getString(0, data.length()));
                 if (counter.incrementAndGet() == MAX_RESPONSE_ELEMENTS) {
                     ws.close();
@@ -239,7 +236,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/wsEndpintThree", ws -> {
 
             ws.handler((data) -> {
-                System.out.println("client data handler 4:" + new String(data.getBytes()));
+                System.out.println("client data simpleMutilpeReplyToAll:" + new String(data.getBytes()));
                 assertNotNull(data.getString(0, data.length()));
                 if (counter.incrementAndGet() == MAX_RESPONSE_ELEMENTS) {
                     ws.close();
@@ -261,7 +258,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/wsEndpintFour", ws -> {
 
             ws.handler((data) -> {
-                System.out.println("client data handler 4:" + new String(data.getBytes()));
+                System.out.println("client data simpleMutilpeReplyToAll_1:" + new String(data.getBytes()));
                 assertNotNull(data.getString(0, data.length()));
                 ws.close();
                 testComplete();
@@ -282,7 +279,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/wsEndpintFour", ws -> {
 
             ws.handler((data) -> {
-                System.out.println("client data handler 5:" + new String(data.getBytes()));
+                System.out.println("client data simpleMutilpeReplyToAllThreaded:" + new String(data.getBytes()));
                 assertNotNull(data.getString(0, data.length()));
                 latch.countDown();
                 ws.close();
@@ -295,7 +292,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/wsEndpintFour", ws -> {
 
             ws.handler((data) -> {
-                System.out.println("client data handler 5.1:" + new String(data.getBytes()));
+                System.out.println("client datasimpleMutilpeReplyToAllThreaded 5.1:" + new String(data.getBytes()));
                 assertNotNull(data.getString(0, data.length()));
                 latch.countDown();
                 ws.close();
@@ -327,92 +324,53 @@ public class WSClusteredServiceTest extends VertxTestBase {
         @Path("/wsEndpintTwo")
         @OperationType(Type.WEBSOCKET)
         public void wsEndpointTwo(String name, MessageReply reply) {
+
+            replyAsyncTwo(name + "-3", reply);
+            replyAsyncTwo(name + "-4", reply);
+            replyAsyncTwo(name + "-5", reply);
+            replyAsyncTwo(name + "-6",reply);
+            System.out.println("wsEndpointTwo-2: " + name + "   :::" + this);
+        }
+
+        private void replyAsyncTwo(String name, MessageReply reply) {
             reply.replyAsync(() -> {
                 try {
                     TimeUnit.MILLISECONDS.sleep(1000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
-                return name + "-3" + Thread.currentThread();
+                return name + Thread.currentThread();
             });
-            reply.replyAsync(() -> {
+        }
+
+        private void replyToAllAsync(String name, MessageReply reply) {
+            reply.replyToAllAsync(() -> {
                 try {
                     TimeUnit.MILLISECONDS.sleep(1000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
-                return name + "-4" + Thread.currentThread();
+                return name + Thread.currentThread();
             });
-            reply.replyAsync(() -> {
-                try {
-                    TimeUnit.MILLISECONDS.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                return name + "-5" + Thread.currentThread();
-            });
-            reply.replyAsync(() -> {
-                try {
-                    TimeUnit.MILLISECONDS.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                return name + "-6" + Thread.currentThread();
-            });
-            System.out.println("Message-2: " + name + "   :::" + this);
         }
 
         @Path("/wsEndpintThree")
         @OperationType(Type.WEBSOCKET)
         public void wsEndpointThreeReplyToAll(String name, MessageReply reply) {
-            reply.replyToAllAsync(() -> {
-                try {
-                    TimeUnit.MILLISECONDS.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                return name + "-3" + Thread.currentThread();
-            });
-            reply.replyToAllAsync(() -> {
-                try {
-                    TimeUnit.MILLISECONDS.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                return name + "-4" + Thread.currentThread();
-            });
-            reply.replyToAllAsync(() -> {
-                try {
-                    TimeUnit.MILLISECONDS.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                return name + "-5" + Thread.currentThread();
-            });
-            reply.replyToAllAsync(() -> {
-                try {
-                    TimeUnit.MILLISECONDS.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                return name + "-6" + Thread.currentThread();
-            });
-            System.out.println("Message-2: " + name + "   :::" + this);
+            replyToAllAsync(name + "-3", reply);
+            replyToAllAsync(name + "-4", reply);
+            replyToAllAsync(name + "-5", reply);
+            replyToAllAsync(name + "-6", reply);
+
+            System.out.println("wsEndpointThreeReplyToAll-2: " + name + "   :::" + this);
         }
 
 
         @Path("/wsEndpintFour")
         @OperationType(Type.WEBSOCKET)
         public void wsEndpointThreeReplyToAllTwo(String name, MessageReply reply) {
-            reply.replyToAllAsync(() -> {
-                try {
-                    TimeUnit.MILLISECONDS.sleep(1000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-                return name + "-3" + Thread.currentThread();
-            });
-            System.out.println("Message-4: " + name + "   :::" + this);
+            replyToAllAsync(name + "-3", reply);
+            System.out.println("wsEndpointThreeReplyToAllTwo-4: " + name + "   :::" + this);
         }
 
         @Path("/hello")
@@ -420,7 +378,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         public void wsEndpointHello(String name, MessageReply reply) {
 
             reply.send(name + "-2");
-            System.out.println("Message-1: " + name + "   :::" + this);
+            System.out.println("wsEndpointHello-1: " + name + "   :::" + this);
         }
 
         @Path("/asyncReply")
@@ -428,7 +386,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         public void wsEndpointAsyncReply(String name, MessageReply reply) {
 
             reply.replyAsync(() -> name + "-2");
-            System.out.println("Message-1: " + name + "   :::" + this);
+            System.out.println("wsEndpointAsyncReply-1: " + name + "   :::" + this);
         }
     }
 }

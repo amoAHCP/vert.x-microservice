@@ -49,22 +49,17 @@ public class WSLocalHandler implements WebSocketHandler {
         final SharedData sharedData = this.vertx.sharedData();
         final String binaryHandlerID = serverSocket.binaryHandlerID();
         final String textHandlerID = serverSocket.textHandlerID();
-        sharedData.getLockWithTimeout(WS_LOCK, 90000L, onSuccess(lock -> {
-            final LocalMap<String, byte[]> wsRegistry = sharedData.getLocalMap(WS_REGISTRY);
-            final WSEndpointHolder holder = getWSEndpointHolderFromSharedData(wsRegistry);
-            if (holder != null) {
-                final List<WSEndpoint> all = holder.getAll();
-                final Optional<WSEndpoint> first = all.stream().filter(e -> e.getBinaryHandlerId().equals(binaryHandlerID) && e.getTextHandlerId().equals(textHandlerID)).findFirst();
-                if (first.isPresent()) {
-                    first.ifPresent(endpoint -> {
-                        holder.remove(endpoint);
-                        wsRegistry.replace(WS_ENDPOINT_HOLDER, serialize(holder));
-                        log("OK REMOVE: " + serverSocket.binaryHandlerID());
-                    });
-                }
-            }
-            lock.release();
-        }));
+        final LocalMap<String, byte[]> wsRegistry = sharedData.getLocalMap(WS_REGISTRY);
+        final WSEndpointHolder holder = getWSEndpointHolderFromSharedData(wsRegistry);
+        if (holder != null) {
+            final List<WSEndpoint> all = holder.getAll();
+            final Optional<WSEndpoint> first = all.stream().filter(e -> e.getBinaryHandlerId().equals(binaryHandlerID) && e.getTextHandlerId().equals(textHandlerID)).findFirst();
+            first.ifPresent(endpoint -> {
+                holder.remove(endpoint);
+                wsRegistry.replace(WS_ENDPOINT_HOLDER, serialize(holder));
+                log("OK REMOVE: " + serverSocket.binaryHandlerID());
+            });
+        }
     }
 
 
@@ -75,11 +70,7 @@ public class WSLocalHandler implements WebSocketHandler {
             log("REDIRECT: " + this);
             final WSMessageWrapper wrapper = (WSMessageWrapper) Serializer.deserialize(message.body());
             final String stringResult = TypeTool.trySerializeToString(wrapper.getBody());
-            if (stringResult != null) {
-                vertx.eventBus().send(wrapper.getEndpoint().getTextHandlerId(), stringResult);
-            } else {
-                vertx.eventBus().send(wrapper.getEndpoint().getBinaryHandlerId(), Serializer.serialize(wrapper.getBody()));
-            }
+            replyToEndpoint(stringResult, Serializer.serialize(wrapper.getBody()), wrapper.getEndpoint());
 
         } catch (IOException e) {
             e.printStackTrace();
@@ -100,18 +91,12 @@ public class WSLocalHandler implements WebSocketHandler {
             final LocalMap<String, byte[]> wsRegistry = sharedData.getLocalMap(WS_REGISTRY);
             final byte[] holderPayload = wsRegistry.get(WS_ENDPOINT_HOLDER);
             if (holderPayload != null) {
-                WSEndpointHolder holder = (WSEndpointHolder) deserialize(holderPayload);
+                final WSEndpointHolder holder = (WSEndpointHolder) deserialize(holderPayload);
                 final List<WSEndpoint> all = holder.getAll();
                 all.stream().
                         filter(endP -> endP.getUrl().equals(wrapper.getEndpoint().getUrl())).
                         forEach(
-                                endpoint -> {
-                                    if (stringResult != null) {
-                                        vertx.eventBus().send(endpoint.getTextHandlerId(), stringResult);
-                                    } else {
-                                        vertx.eventBus().send(endpoint.getBinaryHandlerId(), payload);
-                                    }
-                                }
+                                endpoint -> replyToEndpoint(stringResult, payload, endpoint)
                         );
             }
 
@@ -120,6 +105,14 @@ public class WSLocalHandler implements WebSocketHandler {
             e.printStackTrace();
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
+        }
+    }
+
+    private void replyToEndpoint(String stringResult, byte[] payload, WSEndpoint endpoint) {
+        if (stringResult != null) {
+            vertx.eventBus().send(endpoint.getTextHandlerId(), stringResult);
+        } else {
+            vertx.eventBus().send(endpoint.getBinaryHandlerId(), payload);
         }
     }
 
@@ -147,29 +140,28 @@ public class WSLocalHandler implements WebSocketHandler {
 
     private void createEndpointDefinitionAndRegister(ServerWebSocket serverSocket) {
         final SharedData sharedData = this.vertx.sharedData();
+        final LocalMap<String, byte[]> wsRegistry = sharedData.getLocalMap(WS_REGISTRY);
+        final WSEndpointHolder holder = getWSEndpointHolderFromSharedData(wsRegistry);
+        final String path = serverSocket.path();
+        final WSEndpoint endpoint = new WSEndpoint(serverSocket.binaryHandlerID(), serverSocket.textHandlerID(), path);
 
-        sharedData.getLockWithTimeout(WS_LOCK, 90000L, onSuccess(lock -> {
+        replaceOrAddEndpoint(wsRegistry, holder, endpoint);
 
-            final LocalMap<String, byte[]> wsRegistry = sharedData.getLocalMap(WS_REGISTRY);
-            final WSEndpointHolder holder = getWSEndpointHolderFromSharedData(wsRegistry);
-            final String path = serverSocket.path();
-            final WSEndpoint endpoint = new WSEndpoint(serverSocket.binaryHandlerID(), serverSocket.textHandlerID(), path);
-
-            if (holder != null) {
-                holder.add(endpoint);
-                wsRegistry.replace(WS_ENDPOINT_HOLDER, serialize(holder));
-
-            } else {
-                final WSEndpointHolder holderTemp = new WSEndpointHolder();
-                holderTemp.add(endpoint);
-                wsRegistry.put(WS_ENDPOINT_HOLDER, serialize(holderTemp));
-            }
-
-            sendToWSService(serverSocket, path, endpoint);
-            lock.release();
-        }));
+        sendToWSService(serverSocket, path, endpoint);
 
 
+    }
+
+    private void replaceOrAddEndpoint(LocalMap<String, byte[]> wsRegistry, WSEndpointHolder holder, WSEndpoint endpoint) {
+        if (holder != null) {
+            holder.add(endpoint);
+            wsRegistry.replace(WS_ENDPOINT_HOLDER, serialize(holder));
+
+        } else {
+            final WSEndpointHolder holderTemp = new WSEndpointHolder();
+            holderTemp.add(endpoint);
+            wsRegistry.put(WS_ENDPOINT_HOLDER, serialize(holderTemp));
+        }
     }
 
     private WSEndpointHolder getWSEndpointHolderFromSharedData(final LocalMap<String, byte[]> wsRegistry) {

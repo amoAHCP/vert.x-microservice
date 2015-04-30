@@ -74,7 +74,6 @@ public class ServiceRegistryTest extends VertxTestBase {
         getVertx().eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(getServiceInfoDesc(
                 TESTSERVICE1)), onSuccess(result -> {
             assertEquals(true, result.body());
-            System.out.println("send OK");
             getVertx().sharedData().<String, ServiceInfoHolder>getClusterWideMap(GlobalKeyHolder.REGISTRY_MAP_KEY, onSuccess(resultMap ->
                             resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(holder ->
                                     {

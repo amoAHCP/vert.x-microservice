@@ -152,7 +152,6 @@ public class WSClusterHandler implements WebSocketHandler {
     private void sendToWSService(final ServerWebSocket serverSocket, final EventBus eventBus, final String path, final WSEndpoint endpoint) {
         serverSocket.handler(handler -> {
                     try {
-                        System.out.println("send WS:+ " + endpoint.getUrl());
                         eventBus.send(path, Serializer.serialize(new WSDataWrapper(endpoint, handler.getBytes())), new DeliveryOptions().setSendTimeout(ServiceEntryPoint.DEFAULT_SERVICE_TIMEOUT));
                     } catch (IOException e) {
                         e.printStackTrace();
