@@ -28,47 +28,46 @@ public class MessageReply {
         this.bus = bus;
     }
 
-    public void reply(Serializable message) {
-        // TODO wrap to object which indicates if reply to all or to sender
 
-    }
 
     public void replyAsync(Supplier<Serializable> execute) {
-        final CompletableFuture<Serializable> future = CompletableFuture.supplyAsync(execute, EXECUTOR);
-        final CompletableFuture<byte[]> serializedFuture = future.thenApplyAsync(this::serializeResult);
-        serializedFuture.thenAcceptAsync(serializedResult -> bus.send("ws.reply", serializedResult));
+        replyAsyncExecution("ws.reply", execute, WSReply.SENDER);
     }
 
     public void replyToAllAsync(Supplier<Serializable> execute) {
-        final CompletableFuture<Serializable> future = CompletableFuture.supplyAsync(execute, EXECUTOR);
-        final CompletableFuture<byte[]> serializedFuture = future.thenApplyAsync(this::serializeResult);
-        serializedFuture.thenAcceptAsync(serializedResult -> bus.send("ws.replyToAll", serializedResult));
+        replyAsyncExecution("ws.replyToAll",execute,WSReply.ALL);
     }
 
-    private byte[] serializeResult(Serializable resultValue) {
+    public void replyToAllButSenderAsync(Supplier<Serializable> execute) {
+        replyAsyncExecution("ws.replyToAll",execute, WSReply.ALL_BUT_SENDER);
+    }
+
+    private void replyAsyncExecution(final String url, Supplier<Serializable> execute,WSReply to) {
+       CompletableFuture.supplyAsync(execute, EXECUTOR).
+               thenApplyAsync(val -> serializeResult(val, to)).
+               thenAcceptAsync(serializedResult -> bus.send(url, serializedResult));
+    }
+
+    private byte[] serializeResult(Serializable resultValue, WSReply to) {
         byte[] result = new byte[0];
         try {
-            result = Serializer.serialize(new WSMessageWrapper(endpoint, resultValue, resultValue.getClass(), WSReply.SENDER));
+            result = Serializer.serialize(new WSMessageWrapper(endpoint, resultValue, resultValue.getClass(), to));
         } catch (IOException e) {
             e.printStackTrace();
         }
         return result;
     }
 
-    public void send(Serializable message) {
-        // TODO wrap to object which indicates if reply to all or to sender
-        try {
-            bus.send("ws.reply", Serializer.serialize(new WSMessageWrapper(endpoint, message, message.getClass(), WSReply.SENDER)));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void replyToAll(Object message) {
+    public void reply(Serializable message) {
+        bus.send("ws.reply", serializeResult(message, WSReply.SENDER));
 
     }
 
-    public void replyToAllButSender(Object message) {
+    public void replyToAll(Serializable message) {
+        bus.send("ws.replyToAll", serializeResult(message, WSReply.ALL));
+    }
 
+    public void replyToAllButSender(Serializable message) {
+        bus.send("ws.replyToAll", serializeResult(message, WSReply.ALL_BUT_SENDER));
     }
 }

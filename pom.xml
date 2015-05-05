@@ -71,6 +71,8 @@
         <module>microservice-common</module>
         <module>service-router</module>
         <module>microservice-verticle</module>
+	<module>microservice-registry</module>
+	<module>microservice-heartbeat</module>
     </modules>
 
     <repositories>

@@ -12,10 +12,7 @@ import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
 import io.vertx.core.shareddata.AsyncMap;
 import io.vertx.core.shareddata.SharedData;
-import org.jacpfx.common.GlobalKeyHolder;
-import org.jacpfx.common.Serializer;
-import org.jacpfx.common.ServiceInfo;
-import org.jacpfx.common.ServiceInfoHolder;
+import org.jacpfx.common.*;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -50,6 +47,7 @@ public class ServiceRegistry extends AbstractVerticle {
     private long timeout_time = DEFAULT_TIMEOUT;
     private String serviceRegisterPath;
     private String serviceUnRegisterPath;
+    private final ServiceInfoDecoder serviceInfoDecoder = new ServiceInfoDecoder();
 
 
     @Override
@@ -57,6 +55,7 @@ public class ServiceRegistry extends AbstractVerticle {
         log.info("Service registry started.");
 
         initConfiguration(getConfig());
+        vertx.eventBus().registerDefaultCodec(ServiceInfo.class, serviceInfoDecoder);
         vertx.eventBus().consumer(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, this::serviceRegister);
         vertx.eventBus().consumer(GlobalKeyHolder.SERVICE_REGISTRY_GET, this::getServicesInfo);
         pingService();

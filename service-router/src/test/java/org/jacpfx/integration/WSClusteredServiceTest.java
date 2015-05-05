@@ -377,7 +377,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         @OperationType(Type.WEBSOCKET)
         public void wsEndpointHello(String name, MessageReply reply) {
 
-            reply.send(name + "-2");
+            reply.reply(name + "-2");
             System.out.println("wsEndpointHello-1: " + name + "   :::" + this);
         }
 

@@ -19,7 +19,6 @@ import java.util.concurrent.CountDownLatch;
 /**
  * Created by amo on 13.11.14.
  */
-
 public class ServiceRegistryTest extends VertxTestBase {
     private final static int MAX_RESPONSE_ELEMENTS = 4;
     public static final String SERVICE_REST_GET = "/wsService";
@@ -53,7 +52,7 @@ public class ServiceRegistryTest extends VertxTestBase {
         CountDownLatch latch = new CountDownLatch(1);
         // Deploy the module - the System property `vertx.modulename` will contain the name of the module so you
         // don't have to hardecode it in your tests
-        getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint", asyncResult -> {
+        getVertx().deployVerticle("org.jacpfx.vertx.registry.ServiceRegistry", asyncResult -> {
             // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
             System.out.println("start entry point: " + asyncResult.succeeded());
             assertTrue(asyncResult.succeeded());

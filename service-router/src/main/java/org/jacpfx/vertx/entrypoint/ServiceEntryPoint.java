@@ -76,7 +76,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
         // TODO make it configureable if REST should be privided
         restHandler = new RESTHandler(routeMatcher, defaultServiceTimeout, registeredRoutes);
-        vertx.eventBus().registerDefaultCodec(ServiceInfo.class, serviceInfoDecoder);
+        //vertx.eventBus().registerDefaultCodec(ServiceInfo.class, serviceInfoDecoder);
         //  vertx.eventBus().registerDefaultCodec(Parameter.class, parameterDecoder);
 
 

@@ -1,8 +1,0 @@
-{
-
-  "main":"org.jacpfx.vertx.entrypoint.ServiceEntryPoint",
-  "description":"The service router module is the entry point for the vert.x microservice framework. All services registers here and it is the request entry to access all services",
-  "licenses": ["The Apache Software License Version 2.0"],
-  "author": "Andy Moncsek",
-  "auto-redeploy": true
-}

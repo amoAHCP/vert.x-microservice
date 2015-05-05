@@ -224,27 +224,27 @@ public class WSConsumesTest extends VertxTestBase {
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
         public void testSimpleString(String name, MessageReply reply) {
-              reply.send(name);
+              reply.reply(name);
         }
 
         @Path("/testSimpleObjectBySerialisation")
         @OperationType(Type.WEBSOCKET)
         public void testSimpleObjectBySerialisation(PersonOne p1, MessageReply reply) {
-            reply.send(p1.getName());
+            reply.reply(p1.getName());
         }
 
         @Path("/testSimpleObjectByJSONSerialisation")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
         public void testSimpleObjectByJSONSerialisation(PersonOne p1, MessageReply reply) {
-            reply.send(p1.getName());
+            reply.reply(p1.getName());
         }
 
         @Path("/testSimpleObjectByBinarySerialisation")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/octet-stream")
         public void testSimpleObjectByBinarySerialisation(PersonOne p1, MessageReply reply) {
-            reply.send(p1.getName());
+            reply.reply(p1.getName());
         }
 
     }
