@@ -269,4 +269,6 @@ public class ServiceRegistry extends AbstractVerticle {
         timeFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
         return timeFormat.format(Calendar.getInstance().getTime());
     }
+
+
 }

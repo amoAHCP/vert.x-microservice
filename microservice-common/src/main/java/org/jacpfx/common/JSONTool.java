@@ -13,22 +13,29 @@ import java.util.stream.Stream;
  */
 public class JSONTool {
 
-    public static JsonObject createOperationObject(String name, String description,String url, String type, String[] produces,String[] consumes, String... param) {
-        final JsonObject result = new JsonObject().put("name",name).put("description",description).put("url", url).put("type", type);
-        if(produces!=null) {
+    public static JsonObject createOperationObject(Operation op) {
+        final JsonObject result = new JsonObject().
+                put("name", op.getName()).
+                put("description", op.getDescription()).
+                put("url", op.getUrl()).
+                put("type", op.getType()).
+                put("serviceName",op.getServiceName()).
+                put("connectionHost", op.getConnectionHost()).
+                put("connectionPort",op.getConnectionPort());
+        if(op.getProduces()!=null) {
             final JsonArray types = new JsonArray();
-            Stream.of(produces).map(m -> new JsonObject().put("produces", m)).forEach(jso -> types.add(jso));
+            Stream.of(op.getProduces()).map(m -> new JsonObject().put("produces", m)).forEach(jso -> types.add(jso));
             result.put("produces", types);
         }
-        if(consumes!=null) {
+        if(op.getConsumes()!=null) {
             final JsonArray types = new JsonArray();
-            Stream.of(consumes).map(m -> new JsonObject().put("consumes", m)).forEach(jso -> types.add(jso));
+            Stream.of(op.getConsumes()).map(m -> new JsonObject().put("consumes", m)).forEach(jso -> types.add(jso));
             result.put("consumes", types);
         }
 
-        if(param!=null) {
+        if(op.getParameter()!=null) {
             final JsonArray params = new JsonArray();
-            Stream.of(param).map(m -> new JsonObject().put("param", m)).forEach(jso -> params.add(jso));
+            Stream.of(op.getParameter()).map(m -> new JsonObject().put("param", m)).forEach(jso -> params.add(jso));
             result.put("param", params);
         }
 

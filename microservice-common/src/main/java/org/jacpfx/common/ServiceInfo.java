@@ -1,10 +1,10 @@
 package org.jacpfx.common;
 
+import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -16,12 +16,13 @@ import java.util.stream.Stream;
  * TODO remove setter
  */
 public class ServiceInfo implements Serializable {
-    private String serviceName;
+    private final String serviceName;
     private String lastConnection;
-    private String hostName;
-    private String serviceURL;
-    private String description;
-    private Operation[] operations;
+    private final String hostName;
+    private final String serviceURL;
+    private final String description;
+    private final Operation[] operations;
+    private transient Vertx vertx;
 
     public ServiceInfo(String serviceName, Operation... operations) {
         this(serviceName, null, null, null, null, operations);
@@ -63,9 +64,6 @@ public class ServiceInfo implements Serializable {
         return serviceURL;
     }
 
-    public void setServiceURL(String serviceURL) {
-        this.serviceURL = serviceURL;
-    }
 
     public String getDescription() {
         return description;
@@ -91,22 +89,44 @@ public class ServiceInfo implements Serializable {
         final String hostName = info.getString("hostName");
         final String serviceURL = info.getString("serviceURL");
         final String description = info.getString("description");
-        final List<Operation> operations = new ArrayList<>();
-        JSONTool.getObjectListFromArray(info.getJsonArray("operations")).forEach(operation -> {
-            final String type = operation.getString("type");
-            final String url = operation.getString("url");
-            final String name = operation.getString("name");
-            final String descriptionOperation = operation.getString("description");
-            final JsonArray produces = operation.getJsonArray("produces");
-            final List<String> producesTypes = JSONTool.getObjectListFromArray(produces).stream().map(m -> m.getString("produces")).collect(Collectors.toList());
-            final JsonArray consumes = operation.getJsonArray("consumes");
-            final List<String> consumesTypes = JSONTool.getObjectListFromArray(consumes).stream().map(m -> m.getString("consumes")).collect(Collectors.toList());
-            final JsonArray params = operation.getJsonArray("param");
-            final List<String> paramsList = JSONTool.getObjectListFromArray(params).stream().map(m -> m.getString("param")).collect(Collectors.toList());
-            operations.add(new Operation(name, descriptionOperation, url, type, producesTypes.toArray(new String[producesTypes.size()]), consumesTypes.toArray(new String[consumesTypes.size()]), paramsList.toArray(new String[paramsList.size()])));
-        });
+        final List<Operation> operations  = JSONTool.getObjectListFromArray(info.getJsonArray("operations")).
+                stream().
+                map(operation -> addOperation(operation)).
+                collect(Collectors.toList());
 
         return new ServiceInfo(serviceName, lastConnection, hostName, serviceURL, description, operations.toArray(new Operation[operations.size()]));
+    }
+
+    private static Operation addOperation(JsonObject operation) {
+        final String type = operation.getString("type");
+        final String url = operation.getString("url");
+        final String name = operation.getString("name");
+        final String serviceName1 = operation.getString("serviceName");
+        final String connectionHost = operation.getString("connectionHost");
+        final String connectionPort = operation.getInteger("connectionPort").toString();
+        final String descriptionOperation = operation.getString("description");
+        final JsonArray produces = operation.getJsonArray("produces");
+        final List<String> producesTypes = JSONTool.getObjectListFromArray(produces).stream().map(m -> m.getString("produces")).collect(Collectors.toList());
+        final JsonArray consumes = operation.getJsonArray("consumes");
+        final List<String> consumesTypes = JSONTool.getObjectListFromArray(consumes).stream().map(m -> m.getString("consumes")).collect(Collectors.toList());
+        final JsonArray params = operation.getJsonArray("param");
+        final List<String> paramsList = JSONTool.getObjectListFromArray(params).stream().map(m -> m.getString("param")).collect(Collectors.toList());
+        return new Operation(name,
+                descriptionOperation,
+                url,
+                type,
+                producesTypes.toArray(new String[producesTypes.size()]),
+                consumesTypes.toArray(new String[consumesTypes.size()]),
+                serviceName1,
+                connectionHost,
+                Integer.valueOf(connectionPort).intValue(),
+                null,
+                paramsList.toArray(new String[paramsList.size()]));
+    }
+
+    public  ServiceInfo buildFromServiceInfo(String serviceURL, Operation ...operations) {
+
+        return new ServiceInfo(serviceName,lastConnection,hostName,serviceURL,description,operations);
     }
 
 
@@ -124,7 +144,7 @@ public class ServiceInfo implements Serializable {
     }
 
     private static JsonObject createOperation(Operation op) {
-        return JSONTool.createOperationObject(op.getName(), op.getDescription(), op.getUrl(), op.getType(), op.getProduces(), op.getConsumes(), op.getParameter());
+        return JSONTool.createOperationObject(op);
     }
 
     @Override

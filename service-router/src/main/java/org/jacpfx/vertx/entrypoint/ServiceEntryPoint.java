@@ -1,9 +1,6 @@
 package org.jacpfx.vertx.entrypoint;
 
-import io.vertx.core.AbstractVerticle;
-import io.vertx.core.AsyncResultHandler;
-import io.vertx.core.DeploymentOptions;
-import io.vertx.core.Handler;
+import io.vertx.core.*;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpMethod;
@@ -195,14 +192,20 @@ public class ServiceEntryPoint extends AbstractVerticle {
         request.response().putHeader("content-type", "text/json");
         vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_GET, "xyz", (AsyncResultHandler<Message<JsonObject>>) h ->
                 {
-                    final Message<JsonObject> message = h.result();
-                    final JsonArray servicesArray = message.body().getJsonArray("services");
-                    final List<ServiceInfo> infosUpdate = marschallServiceObjectAndUpdateURLs(prefixWS, prefixHTTP, mainURL, servicesArray);
-                    final JsonObject result = createServiceInfoJSON(infosUpdate);
+
+                    // TODO move this to static factory
+                    final JsonObject result = buildServiceInfoForEntryPoint(h);
                     request.response().end(result.encodePrettily());
                 }
 
         );
+    }
+
+    private JsonObject buildServiceInfoForEntryPoint(AsyncResult<Message<JsonObject>> h) {
+        final Message<JsonObject> message = h.result();
+        final JsonArray servicesArray = message.body().getJsonArray("services");
+        final List<ServiceInfo> infosUpdate = marschallServiceObjectAndUpdateURLs(prefixWS, prefixHTTP, mainURL, servicesArray);
+        return createServiceInfoJSON(infosUpdate);
     }
 
     private JsonObject createServiceInfoJSON(List<ServiceInfo> infosUpdate) {
@@ -216,32 +219,40 @@ public class ServiceEntryPoint extends AbstractVerticle {
                 stream().
                 map(obj -> (JsonObject) obj).
                 map(jsonInfo -> ServiceInfo.buildFromJson(jsonInfo)).
-                map(info -> {
-                    info.setServiceURL(mainURL.concat(info.getServiceName()));
-                    return info;
-                }).
-                map(infoObj -> {
-                    updateOperationUrl(prefixWS, prefixHTTP, mainURL, infoObj);
-                    return infoObj;
-                }).collect(Collectors.toList());
+                map(infoObj -> updateOperationUrl(prefixWS, prefixHTTP, mainURL, infoObj, mainURL.concat(infoObj.getServiceName()), host, port)).
+                collect(Collectors.toList());
     }
 
-    private void updateOperationUrl(String prefixWS, String prefixHTTP, String mainURL, ServiceInfo infoObj) {
-        Stream<Operation> sOp = Stream.of(infoObj.getOperations());
-        sOp.forEach(operation -> {
+    private ServiceInfo updateOperationUrl(String prefixWS, String prefixHTTP, String mainURL, ServiceInfo infoObj, String serviceURL, String host, int port) {
+        final List<Operation> mappedOperations = Stream.of(infoObj.getOperations()).map(operation -> {
             final String url = operation.getUrl();
             final Type type = Type.valueOf(operation.getType());
             switch (type) {
                 case EVENTBUS:
-                    break;
+                    return null;
                 case WEBSOCKET:
-                    operation.setUrl(prefixWS.concat(mainURL).concat(url));
-                    break;
+                    return createOperation(infoObj.getServiceName(), prefixWS, mainURL, host, port, operation, url);
                 default:
-                    operation.setUrl(prefixHTTP.concat(mainURL).concat(url));
+                    return createOperation(infoObj.getServiceName(), prefixHTTP, mainURL, host, port, operation, url);
 
             }
-        });
+        }).collect(Collectors.toList());
+
+        return infoObj.buildFromServiceInfo(serviceURL, mappedOperations.toArray(new Operation[mappedOperations.size()]));
+    }
+
+    private Operation createOperation(String serviceName, String prefix, String mainURL, String host, int port, Operation operation, String url) {
+        return new Operation(operation.getName(),
+                operation.getDescription(),
+                prefix.concat(mainURL).concat(url),
+                operation.getType(),
+                operation.getProduces(),
+                operation.getConsumes(),
+                serviceName,
+                host,
+                port,
+                null,
+                operation.getParameter());
     }
 
 

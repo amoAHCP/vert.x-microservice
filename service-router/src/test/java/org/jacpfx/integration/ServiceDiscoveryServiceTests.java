@@ -19,6 +19,7 @@ import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.Path;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.stream.Collectors;
 
 /**
  * Created by Andy Moncsek on 07.05.15.
@@ -181,6 +182,43 @@ public class ServiceDiscoveryServiceTests extends VertxTestBase {
 
     }
 
+    @Test
+
+    public void discoverService1And2OperationCount() throws InterruptedException {
+
+
+        ServiceDiscovery.getInstance(this.getVertx()).getService(SERVICE_REST_GET, (serviceResult) -> {
+            assertEquals(true, serviceResult.succeeded());
+            Optional<ServiceInfo> optional = serviceResult.getServiceInfo();
+            boolean present = optional.isPresent();
+            assertEquals(true, present);
+            optional.ifPresent(si -> {
+                assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET));
+                assertEquals(true, si.getOperationsByType(Type.WEBSOCKET).collect(Collectors.toList()).size() == 2);
+                assertEquals(true, si.getOperationsByType(Type.REST_GET).collect(Collectors.toList()).size() == 1);
+            });
+            ServiceDiscovery.getInstance(this.getVertx()).getService(SERVICE_REST_GET2, (serviceResult2) -> {
+                assertEquals(true, serviceResult2.succeeded());
+                Optional<ServiceInfo> optional2 = serviceResult2.getServiceInfo();
+                boolean present2 = optional2.isPresent();
+                assertEquals(true, present2);
+                optional2.ifPresent(si -> {
+                    assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET2));
+                    assertEquals(true, si.getOperationsByType(Type.WEBSOCKET).collect(Collectors.toList()).size() == 2);
+                    assertEquals(true, si.getOperationsByType(Type.REST_GET).collect(Collectors.toList()).size() == 2);
+                    System.out.println("discoverService1And2OperationCount finished");
+                    testComplete();
+                });
+
+            });
+        });
+
+
+        await();
+
+    }
+
+
 
     public HttpClient getClient() {
         return client;
@@ -237,7 +275,13 @@ public class ServiceDiscoveryServiceTests extends VertxTestBase {
 
             System.out.println("wsEndpointThree-2: " + name + "   :::" + this);
         }
+        @Path("/wsServiceTwoFour")
+        @OperationType(Type.REST_GET)
+        public void wsEndpointFour(String name,Message reply) {
 
+
+            System.out.println("wsServiceTwoFour-2: " + name + "   :::" + this);
+        }
 
     }
 }

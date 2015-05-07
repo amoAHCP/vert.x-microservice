@@ -28,10 +28,11 @@ public class ServiceDiscovery {
         this.restURL = restURL;
     }
 
+    // TODO add TTL parameter
     public static ServiceDiscovery getInstance(Vertx vertx) {
         return new ServiceDiscovery(vertx, null);
     }
-
+    // TODO add TTL parameter
     public static ServiceDiscovery getInstance(String restURL) {
         return new ServiceDiscovery(null, restURL);
     }
@@ -39,7 +40,7 @@ public class ServiceDiscovery {
     public ServiceDiscovery getService(String serviceName, Consumer<ServiceInfoResult> consumer) {
         if(vertx!=null){
             getServiceInfoByVertx(consumer,(serviceInfo)->serviceInfo.getServiceName().equalsIgnoreCase(serviceName));
-        }
+        } //TODO add http connection
         return new ServiceDiscovery(vertx, restURL);
     }
 
@@ -51,6 +52,7 @@ public class ServiceDiscovery {
     }
 
     private ServiceInfo getServiceInfoByVertx(Consumer<ServiceInfoResult> consumer, Function<ServiceInfo,Boolean> criteria) {
+        // TODO add caching mechanism with TTL to reduce
         vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_GET, "xyz", (AsyncResultHandler<Message<JsonObject>>) h ->
                 {
                     if (h.succeeded()) {

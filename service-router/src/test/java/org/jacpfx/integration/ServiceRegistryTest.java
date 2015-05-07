@@ -120,13 +120,6 @@ public class ServiceRegistryTest extends VertxTestBase {
         testComplete();
     }
 
-   /** private void info2(Message m) {
-        Logger logger = container.logger();
-
-        m.reply(getServiceInfoDesc("/testservice2"));
-        logger.info("reply to: " + m.body());
-        assertEquals("ping", m.body());
-    } */
 
     private ServiceInfo getServiceInfoDesc(String serviceName) {
         ServiceInfo info = new ServiceInfo(serviceName, getDummyOperations().toArray(new Operation[]{}));
