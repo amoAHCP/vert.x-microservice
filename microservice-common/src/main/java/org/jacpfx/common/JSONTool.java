@@ -13,12 +13,12 @@ import java.util.stream.Stream;
  */
 public class JSONTool {
 
-    public static JsonObject createOperationObject(String url, String type, String[] mime,String[] consumes, String... param) {
-        final JsonObject result = new JsonObject().put("url", url).put("type", type);
-        if(mime!=null) {
+    public static JsonObject createOperationObject(String name, String description,String url, String type, String[] produces,String[] consumes, String... param) {
+        final JsonObject result = new JsonObject().put("name",name).put("description",description).put("url", url).put("type", type);
+        if(produces!=null) {
             final JsonArray types = new JsonArray();
-            Stream.of(mime).map(m -> new JsonObject().put("mime", m)).forEach(jso -> types.add(jso));
-            result.put("mime", types);
+            Stream.of(produces).map(m -> new JsonObject().put("produces", m)).forEach(jso -> types.add(jso));
+            result.put("produces", types);
         }
         if(consumes!=null) {
             final JsonArray types = new JsonArray();

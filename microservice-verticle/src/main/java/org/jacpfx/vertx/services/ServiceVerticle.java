@@ -20,6 +20,8 @@ import javax.ws.rs.*;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.*;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.MissingResourceException;
@@ -73,7 +75,16 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     private ServiceInfo createInfoObject(List<Operation> operations) {
-        return new ServiceInfo(serviceName(),operations.toArray(new Operation[operations.size()]));
+        return new ServiceInfo(serviceName(),null,getHostName(),null,null,operations.toArray(new Operation[operations.size()]));
+    }
+
+    public String getHostName() {
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+            return "127.0.0.1";
+        }
     }
 
     protected <T> Handler<AsyncResult<T>> onSuccess(Consumer<T> consumer) {
@@ -127,8 +138,8 @@ public abstract class ServiceVerticle extends AbstractVerticle {
             case EVENTBUS:
                 break;
         }
-
-        return new Operation(url,opType.value().name(),mimeTypes,consumeTypes,parameters.toArray(new String[parameters.size()]));
+         // TODO add service description!!!
+        return new Operation(path.value(),null,url,opType.value().name(),mimeTypes,consumeTypes,parameters.toArray(new String[parameters.size()]));
     }
 
     /**
@@ -151,6 +162,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
      */
     private List<String> getWSParameter(Method method) {
         final Class<?>[] parameterTypes = method.getParameterTypes();
+        // TODO, instead of returning the class names of the parameter return a json representation if methods @Consumes annotation defines application/json. Be aware of String, Integer....
         final List<Class> classes = Stream.of(parameterTypes).filter(c -> !c.equals(MessageReply.class)).collect(Collectors.toList());
         if(classes.size()>1) throw new IllegalArgumentException("only one parameter is allowed");
         return classes.stream().map(c->c.getName()).collect(Collectors.toList());

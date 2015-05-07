@@ -7,19 +7,32 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
  * Created by amo on 27.10.14.
+ * TODO remove setter
  */
-public class ServiceInfo implements Serializable{
+public class ServiceInfo implements Serializable {
     private String serviceName;
     private String lastConnection;
+    private String hostName;
+    private String serviceURL;
+    private String description;
     private Operation[] operations;
 
-    public ServiceInfo(String serviceName, Operation ...operations) {
+    public ServiceInfo(String serviceName, Operation... operations) {
+        this(serviceName, null, null, null, null, operations);
+    }
+
+    public ServiceInfo(String serviceName, String lastConnection, String hostName, String serviceURL, String description, Operation... operations) {
         this.serviceName = serviceName;
+        this.lastConnection = lastConnection;
+        this.hostName = hostName;
+        this.serviceURL = serviceURL;
+        this.description = description;
         this.operations = operations;
     }
 
@@ -35,32 +48,65 @@ public class ServiceInfo implements Serializable{
         return serviceName;
     }
 
-    public void setServiceName(String serviceName) {
-        this.serviceName = serviceName;
-    }
 
     public Operation[] getOperations() {
         return operations;
     }
 
-    public void setOperations(Operation[] operations) {
-        this.operations = operations;
+
+    public String getHostName() {
+        return hostName;
+    }
+
+
+    public String getServiceURL() {
+        return serviceURL;
+    }
+
+    public void setServiceURL(String serviceURL) {
+        this.serviceURL = serviceURL;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+
+    public Stream<Operation> getOperations(final String name) {
+        return Stream.of(operations).filter(op -> op.getName().equalsIgnoreCase(name));
+    }
+
+    public Optional<Operation> getOperation(final String name) {
+        return Stream.of(operations).filter(op -> op.getName().equalsIgnoreCase(name)).findFirst();
+    }
+
+    public Stream<Operation> getOperationsByType(final Type type) {
+        final String typeString = type.toString();
+        return Stream.of(operations).filter(op -> op.getType().equalsIgnoreCase(typeString));
     }
 
     public static ServiceInfo buildFromJson(JsonObject info) {
         final String serviceName = info.getString("serviceName");
+        final String lastConnection = info.getString("lastConnection");
+        final String hostName = info.getString("hostName");
+        final String serviceURL = info.getString("serviceURL");
+        final String description = info.getString("description");
         final List<Operation> operations = new ArrayList<>();
-        JSONTool.getObjectListFromArray(info.getJsonArray("operations")).forEach(operation->{
+        JSONTool.getObjectListFromArray(info.getJsonArray("operations")).forEach(operation -> {
             final String type = operation.getString("type");
             final String url = operation.getString("url");
-            final JsonArray mimes = operation.getJsonArray("mime");
-            final List<String> mimeTypes = JSONTool.getObjectListFromArray(mimes).stream().map(m->m.getString("mime")).collect(Collectors.toList());
+            final String name = operation.getString("name");
+            final String descriptionOperation = operation.getString("description");
+            final JsonArray produces = operation.getJsonArray("produces");
+            final List<String> producesTypes = JSONTool.getObjectListFromArray(produces).stream().map(m -> m.getString("produces")).collect(Collectors.toList());
+            final JsonArray consumes = operation.getJsonArray("consumes");
+            final List<String> consumesTypes = JSONTool.getObjectListFromArray(consumes).stream().map(m -> m.getString("consumes")).collect(Collectors.toList());
             final JsonArray params = operation.getJsonArray("param");
-            final List<String> paramsList = JSONTool.getObjectListFromArray(params).stream().map(m->m.getString("param")).collect(Collectors.toList());
-            operations.add(new Operation(url,type,mimeTypes.toArray(new String[mimeTypes.size()]),paramsList.toArray(new String[paramsList.size()])));
+            final List<String> paramsList = JSONTool.getObjectListFromArray(params).stream().map(m -> m.getString("param")).collect(Collectors.toList());
+            operations.add(new Operation(name, descriptionOperation, url, type, producesTypes.toArray(new String[producesTypes.size()]), consumesTypes.toArray(new String[consumesTypes.size()]), paramsList.toArray(new String[paramsList.size()])));
         });
 
-        return new ServiceInfo(serviceName,operations.toArray(new Operation[operations.size()]));
+        return new ServiceInfo(serviceName, lastConnection, hostName, serviceURL, description, operations.toArray(new Operation[operations.size()]));
     }
 
 
@@ -69,13 +115,16 @@ public class ServiceInfo implements Serializable{
         final JsonArray operationsArray = new JsonArray();
         Stream.of(info.getOperations()).forEach(op -> operationsArray.add(createOperation(op)));
         tmp.put("serviceName", info.getServiceName());
-        tmp.put("lastConnection",info.getLastConnection());
+        tmp.put("lastConnection", info.getLastConnection());
+        tmp.put("hostName", info.getHostName());
+        tmp.put("serviceURL", info.getServiceURL());
+        tmp.put("description", info.getDescription());
         tmp.put("operations", operationsArray);
         return tmp;
     }
 
     private static JsonObject createOperation(Operation op) {
-        return JSONTool.createOperationObject(op.getUrl(), op.getType(), op.getMime(), op.getConsumes(),op.getParameter());
+        return JSONTool.createOperationObject(op.getName(), op.getDescription(), op.getUrl(), op.getType(), op.getProduces(), op.getConsumes(), op.getParameter());
     }
 
     @Override
@@ -85,15 +134,24 @@ public class ServiceInfo implements Serializable{
 
         ServiceInfo that = (ServiceInfo) o;
 
-        if (!Arrays.equals(operations, that.operations)) return false;
-        if (!serviceName.equals(that.serviceName)) return false;
+        if (serviceName != null ? !serviceName.equals(that.serviceName) : that.serviceName != null) return false;
+        if (lastConnection != null ? !lastConnection.equals(that.lastConnection) : that.lastConnection != null)
+            return false;
+        if (hostName != null ? !hostName.equals(that.hostName) : that.hostName != null) return false;
+        if (serviceURL != null ? !serviceURL.equals(that.serviceURL) : that.serviceURL != null) return false;
+        if (description != null ? !description.equals(that.description) : that.description != null) return false;
+        // Probably incorrect - comparing Object[] arrays with Arrays.equals
+        return Arrays.equals(operations, that.operations);
 
-        return true;
     }
 
     @Override
     public int hashCode() {
-        int result = serviceName.hashCode();
+        int result = serviceName != null ? serviceName.hashCode() : 0;
+        result = 31 * result + (lastConnection != null ? lastConnection.hashCode() : 0);
+        result = 31 * result + (hostName != null ? hostName.hashCode() : 0);
+        result = 31 * result + (serviceURL != null ? serviceURL.hashCode() : 0);
+        result = 31 * result + (description != null ? description.hashCode() : 0);
         result = 31 * result + (operations != null ? Arrays.hashCode(operations) : 0);
         return result;
     }
@@ -103,6 +161,9 @@ public class ServiceInfo implements Serializable{
         return "ServiceInfo{" +
                 "serviceName='" + serviceName + '\'' +
                 ", lastConnection='" + lastConnection + '\'' +
+                ", hostName='" + hostName + '\'' +
+                ", serviceURL='" + serviceURL + '\'' +
+                ", description='" + description + '\'' +
                 ", operations=" + Arrays.toString(operations) +
                 '}';
     }

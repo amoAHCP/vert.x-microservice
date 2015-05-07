@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class WSClusteredServiceTest extends VertxTestBase {
     private final static int MAX_RESPONSE_ELEMENTS = 4;
     public static final String SERVICE_REST_GET = "/wsService";
+    public static final String HOST = "localhost";
 
     protected int getNumNodes() {
         return 1;
@@ -60,7 +61,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
         CountDownLatch latch = new CountDownLatch(1);
         CountDownLatch latch2 = new CountDownLatch(1);
         DeploymentOptions options = new DeploymentOptions().setInstances(1);
-        options.setConfig(new JsonObject().put("clustered", true));
+        options.setConfig(new JsonObject().put("clustered", true).put("host", HOST));
         // Deploy the module - the System property `vertx.modulename` will contain the name of the module so you
         // don't have to hardecode it in your tests
         getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint",options, asyncResult -> {
@@ -97,7 +98,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
     public void simpleConnectAndWrite() throws InterruptedException {
 
 
-        getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/hello", ws -> {
+        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/hello", ws -> {
             long startTime = System.currentTimeMillis();
             ws.handler((data) -> {
                 System.out.println("client data simpleConnectAndWrite:" + new String(data.getBytes()));
@@ -171,7 +172,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
 
     @Test
     public void simpleConnectOnTenThreads() throws InterruptedException {
-        int counter =100;
+        int counter =1000;
         ExecutorService s = Executors.newFixedThreadPool(counter);
         CountDownLatch latchMain = new CountDownLatch(counter);
 

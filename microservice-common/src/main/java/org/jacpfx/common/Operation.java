@@ -9,15 +9,23 @@ import java.util.Arrays;
 public class Operation implements Serializable{
     private String url;
     private String type;
-    private String[] mime;
+    private String name;
+    private String description;
+    private String[] produces;
     private String[] consumes;
     private String[] parameter;
 
-    public Operation(String url, String type, String[] mime,String[] consumes, String... param) {
+    public Operation(String url, String type, String[] produces,String[] consumes, String... param) {
+       this(url,null,url,type, produces,consumes,param);
+    }
+
+    public Operation(String name, String description,String url, String type, String[] produces,String[] consumes, String... param) {
+        this.name = name;
+        this.description = description;
         this.url = url;
         this.type = type;
         this.parameter = param;
-        this.mime = mime;
+        this.produces = produces;
         this.consumes = consumes;
     }
 
@@ -38,12 +46,20 @@ public class Operation implements Serializable{
         return parameter;
     }
 
-    public String[] getMime() {
-        return mime;
+    public String[] getProduces() {
+        return produces;
     }
 
     public String[] getConsumes() {
         return consumes;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public String getDescription() {
+        return description;
     }
 
     @Override
@@ -51,7 +67,9 @@ public class Operation implements Serializable{
         return "Operation{" +
                 "url='" + url + '\'' +
                 ", type='" + type + '\'' +
-                ", mime=" + Arrays.toString(mime) +
+                ", name='" + name + '\'' +
+                ", description='" + description + '\'' +
+                ", produces=" + Arrays.toString(produces) +
                 ", consumes=" + Arrays.toString(consumes) +
                 ", parameter=" + Arrays.toString(parameter) +
                 '}';

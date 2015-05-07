@@ -2,9 +2,11 @@ package org.jacpfx.integration;
 
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
+import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.WebSocketFrame;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
@@ -35,6 +37,8 @@ public class WSTimerTest extends VertxTestBase {
     protected Vertx getVertx() {
         return vertices[0];
     }
+    
+    private static final String HOST="localhost";
 
     @Override
     protected ClusterManager getClusterManager() {
@@ -56,9 +60,10 @@ public class WSTimerTest extends VertxTestBase {
         CountDownLatch latch = new CountDownLatch(1);
         CountDownLatch latch2 = new CountDownLatch(1);
         DeploymentOptions options = new DeploymentOptions().setInstances(1);
+        options.setConfig(new JsonObject().put("host", HOST));
         // Deploy the module - the System property `vertx.modulename` will contain the name of the module so you
         // don't have to hardecode it in your tests
-        getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint", asyncResult -> {
+        getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint",options, asyncResult -> {
             // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
             System.out.println("start org.jacpfx.vertx.entrypoint.ServiceEntryPoint: " + asyncResult.succeeded());
             assertTrue(asyncResult.succeeded());
@@ -95,41 +100,26 @@ public class WSTimerTest extends VertxTestBase {
         final String message = "42";
         CountDownLatch latch = new CountDownLatch(6);
 
-        getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/testSimpleTimerToAll", ws -> {
+        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/testSimpleTimerToAll", ws -> {
             long startTime = System.currentTimeMillis();
             ws.handler((data) -> {
-                System.out.println("client testSimpleString:" + new String(data.getBytes()));
-                assertNotNull(data.getString(0, data.length()));
-                assertTrue(data.getString(0, data.length()).equals(message));
-                long endTime = System.currentTimeMillis();
-                System.out.println("Total execution time testSimpleString: " + (endTime - startTime) + "ms");
-                latch.countDown();
+                wsHandleBody(message, latch, startTime, data);
             });
 
 
         });
-        getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/testSimpleTimerToAll", ws -> {
+        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/testSimpleTimerToAll", ws -> {
             long startTime = System.currentTimeMillis();
             ws.handler((data) -> {
-                System.out.println("client testSimpleString:" + new String(data.getBytes()));
-                assertNotNull(data.getString(0, data.length()));
-                assertTrue(data.getString(0, data.length()).equals(message));
-                long endTime = System.currentTimeMillis();
-                System.out.println("Total execution time testSimpleString: " + (endTime - startTime) + "ms");
-                latch.countDown();
+                wsHandleBody(message, latch, startTime, data);
             });
 
 
         });
-        getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/testSimpleTimerToAll", ws -> {
+        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/testSimpleTimerToAll", ws -> {
             long startTime = System.currentTimeMillis();
             ws.handler((data) -> {
-                System.out.println("client testSimpleString:" + new String(data.getBytes()));
-                assertNotNull(data.getString(0, data.length()));
-                assertTrue(data.getString(0, data.length()).equals(message));
-                long endTime = System.currentTimeMillis();
-                System.out.println("Total execution time testSimpleString: " + (endTime - startTime) + "ms");
-                latch.countDown();
+                wsHandleBody(message, latch, startTime, data);
             });
             // send connect message
             ws.writeFrame(WebSocketFrame.textFrame(message, true));
@@ -140,6 +130,14 @@ public class WSTimerTest extends VertxTestBase {
 
     }
 
+    private void wsHandleBody(String message, CountDownLatch latch, long startTime, Buffer data) {
+        System.out.println("client testSimpleString:" + new String(data.getBytes()));
+        assertNotNull(data.getString(0, data.length()));
+        assertTrue(data.getString(0, data.length()).equals(message));
+        long endTime = System.currentTimeMillis();
+        System.out.println("Total execution time testSimpleString: " + (endTime - startTime) + "ms");
+        latch.countDown();
+    }
 
 
     @ApplicationPath(SERVICE_REST_GET)

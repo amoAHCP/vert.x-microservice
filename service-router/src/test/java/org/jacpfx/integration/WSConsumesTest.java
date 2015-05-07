@@ -7,6 +7,7 @@ import io.vertx.core.buffer.Buffer;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.WebSocketFrame;
+import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
@@ -33,6 +34,7 @@ import java.util.concurrent.CountDownLatch;
 public class WSConsumesTest extends VertxTestBase {
     private final static int MAX_RESPONSE_ELEMENTS = 4;
     public static final String SERVICE_REST_GET = "/wsService";
+    public static final String HOST = "localhost";
 
     protected int getNumNodes() {
         return 1;
@@ -62,9 +64,10 @@ public class WSConsumesTest extends VertxTestBase {
         CountDownLatch latch = new CountDownLatch(1);
         CountDownLatch latch2 = new CountDownLatch(1);
         DeploymentOptions options = new DeploymentOptions().setInstances(1);
+        options.setConfig(new JsonObject().put("host", HOST));
         // Deploy the module - the System property `vertx.modulename` will contain the name of the module so you
         // don't have to hardecode it in your tests
-        getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint", asyncResult -> {
+        getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint",options, asyncResult -> {
             // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
             System.out.println("start org.jacpfx.vertx.entrypoint.ServiceEntryPoint: " + asyncResult.succeeded());
             assertTrue(asyncResult.succeeded());
@@ -112,13 +115,7 @@ public class WSConsumesTest extends VertxTestBase {
                 testComplete();
             });
 
-            try {
-                byte[] tmp = Serializer.serialize(message);
-               // ws.writeMessage(Buffer.buffer(tmp));
-                ws.writeFrame(WebSocketFrame.textFrame(message,true));
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            ws.writeFrame(WebSocketFrame.textFrame(message, true));
         });
 
 
@@ -131,7 +128,7 @@ public class WSConsumesTest extends VertxTestBase {
     public void testSimpleObjectBySerialisation() throws InterruptedException {
         final PersonOne message = new PersonOne("Andy","M");
 
-        getClient().websocket(8080, "localhost", SERVICE_REST_GET + "/testSimpleObjectBySerialisation", ws -> {
+        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/testSimpleObjectBySerialisation", ws -> {
             long startTime = System.currentTimeMillis();
             ws.handler((data) -> {
                 System.out.println("testSimpleObjectBySerialisation :" + new String(data.getBytes()));
@@ -173,13 +170,8 @@ public class WSConsumesTest extends VertxTestBase {
                 testComplete();
             });
 
-            try {
-                byte[] tmp = Serializer.serialize(message);
-                Gson gg = new Gson();
-                ws.writeMessage(Buffer.buffer(gg.toJson(message)));
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            Gson gg = new Gson();
+            ws.writeMessage(Buffer.buffer(gg.toJson(message)));
         });
 
 
