@@ -172,7 +172,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
 
     @Test
     public void simpleConnectOnTenThreads() throws InterruptedException {
-        int counter =1000;
+        int counter =10;
         ExecutorService s = Executors.newFixedThreadPool(counter);
         CountDownLatch latchMain = new CountDownLatch(counter);
 
