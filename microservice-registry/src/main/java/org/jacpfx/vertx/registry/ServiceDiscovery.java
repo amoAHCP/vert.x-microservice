@@ -71,6 +71,6 @@ public class ServiceDiscovery {
     private Stream<ServiceInfo> getServiceInfoFromMessage(AsyncResult<Message<JsonObject>> h) {
         Message<JsonObject> message = h.result();
         final JsonArray servicesArray = message.body().getJsonArray("services");
-        return servicesArray.stream().map(obj -> (JsonObject) obj).map(jsonInfo -> ServiceInfo.buildFromJson(jsonInfo));
+        return servicesArray.stream().map(obj -> (JsonObject) obj).map(jsonInfo -> ServiceInfo.buildFromJson(jsonInfo,vertx));
     }
 }

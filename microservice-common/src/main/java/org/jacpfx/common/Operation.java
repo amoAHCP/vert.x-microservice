@@ -112,11 +112,11 @@ public class Operation implements Serializable{
     public Optional<HttpClient> getHttpClient() {
         if(client==null){
             client = vertx.createHttpClient(new HttpClientOptions().
-                    setKeepAlive(false).
-                    setDefaultHost(connectionHost).
-                    setDefaultPort(connectionPort));
+                    setKeepAlive(false));
+                   // setDefaultHost(connectionHost).
+                   // setDefaultPort(connectionPort));
         }
-        return Optional.of(client);
+        return Optional.ofNullable(client);
     }
 
     /**
@@ -146,9 +146,7 @@ public class Operation implements Serializable{
     }
 
     public Operation websocketConnection(Handler<WebSocket> wsConnect) {
-        getHttpClient().ifPresent(httpClient -> {
-            httpClient.websocket(serviceName.concat(name),wsConnect);
-        });
+        getHttpClient().ifPresent(httpClient -> httpClient.websocket(connectionPort,connectionHost,serviceName.concat(name),wsConnect));
         return new Operation(name,description,url,type,produces,consumes,vertx,parameter);
     }
 

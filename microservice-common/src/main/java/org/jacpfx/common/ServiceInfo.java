@@ -29,12 +29,17 @@ public class ServiceInfo implements Serializable {
     }
 
     public ServiceInfo(String serviceName, String lastConnection, String hostName, String serviceURL, String description, Operation... operations) {
+        this(serviceName,lastConnection,hostName,serviceURL,description,null,operations);
+    }
+
+    public ServiceInfo(String serviceName, String lastConnection, String hostName, String serviceURL, String description,Vertx vertx, Operation... operations) {
         this.serviceName = serviceName;
         this.lastConnection = lastConnection;
         this.hostName = hostName;
         this.serviceURL = serviceURL;
         this.description = description;
         this.operations = operations;
+        this.vertx = vertx;
     }
 
     public String getLastConnection() {
@@ -84,6 +89,10 @@ public class ServiceInfo implements Serializable {
     }
 
     public static ServiceInfo buildFromJson(JsonObject info) {
+        return buildFromJson(info,null);
+    }
+
+    public static ServiceInfo buildFromJson(JsonObject info,Vertx vertx) {
         final String serviceName = info.getString("serviceName");
         final String lastConnection = info.getString("lastConnection");
         final String hostName = info.getString("hostName");
@@ -91,13 +100,13 @@ public class ServiceInfo implements Serializable {
         final String description = info.getString("description");
         final List<Operation> operations  = JSONTool.getObjectListFromArray(info.getJsonArray("operations")).
                 stream().
-                map(operation -> addOperation(operation)).
+                map(operation -> addOperation(operation,vertx)).
                 collect(Collectors.toList());
 
-        return new ServiceInfo(serviceName, lastConnection, hostName, serviceURL, description, operations.toArray(new Operation[operations.size()]));
+        return new ServiceInfo(serviceName, lastConnection, hostName, serviceURL, description, vertx,operations.toArray(new Operation[operations.size()]));
     }
 
-    private static Operation addOperation(JsonObject operation) {
+    private static Operation addOperation(JsonObject operation,Vertx vertx) {
         final String type = operation.getString("type");
         final String url = operation.getString("url");
         final String name = operation.getString("name");
@@ -120,7 +129,7 @@ public class ServiceInfo implements Serializable {
                 serviceName1,
                 connectionHost,
                 Integer.valueOf(connectionPort).intValue(),
-                null,
+                vertx,
                 paramsList.toArray(new String[paramsList.size()]));
     }
 

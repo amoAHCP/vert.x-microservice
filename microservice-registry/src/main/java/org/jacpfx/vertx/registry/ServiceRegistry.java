@@ -15,11 +15,15 @@ import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.*;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.List;
 import java.util.TimeZone;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * The Service registry knows all service verticles, a verticle registers here and will be traced. The registry also notify the router to add/remove routes to the services.
@@ -39,17 +43,30 @@ public class ServiceRegistry extends AbstractVerticle {
     private static final long DEFAULT_TIMEOUT = 50000;
     private static final long DEFAULT_PING_TIME = 10000;
     private static final long DEFAULT_SWEEP_TIME = 0;
-
+    public static final String HOST = getHostName();
+    public static final int PORT = 8080;
+    private static final String prefixWS = "ws://";
+    private static final String prefixHTTP = "http://";
 
     private long expiration_age = DEFAULT_EXPIRATION_AGE;
     private long ping_time = DEFAULT_PING_TIME;
     private long sweep_time = DEFAULT_SWEEP_TIME;
     private long timeout_time = DEFAULT_TIMEOUT;
+    private String mainURL;
     private String serviceRegisterPath;
     private String serviceUnRegisterPath;
+    private String host;
+    private int port;
     private final ServiceInfoDecoder serviceInfoDecoder = new ServiceInfoDecoder();
 
-
+    public static String getHostName() {
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+            return "127.0.0.1";
+        }
+    }
     @Override
     public void start(Future<Void> startFuture) {
         log.info("Service registry started.");
@@ -69,6 +86,9 @@ public class ServiceRegistry extends AbstractVerticle {
         timeout_time = config.getLong("timeout", DEFAULT_TIMEOUT);
         serviceRegisterPath = config.getString("serviceRegisterPath", GlobalKeyHolder.SERVICE_REGISTER_HANDLER);
         serviceUnRegisterPath = config.getString("serviceUnRegisterPath", GlobalKeyHolder.SERVICE_UNREGISTER_HANDLER);
+        host = config.getString("host", HOST);
+        port = config.getInteger("port", PORT);
+        mainURL = host.concat(":").concat(Integer.valueOf(port).toString());
 
     }
 
@@ -82,7 +102,7 @@ public class ServiceRegistry extends AbstractVerticle {
     private void getServiceHolderAndReplyToServiceInfoRequest(Message<JsonObject> message, AsyncMap<String, ServiceInfoHolder> resultMap) {
         resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(resultHolder -> {
             if (resultHolder != null) {
-                message.reply(resultHolder.getServiceInfo());
+                message.reply(buildServiceInfoForEntryPoint(resultHolder.getServiceInfo()));
             } else {
                 message.reply(new JsonObject().put("services", new JsonArray()));
             }
@@ -268,6 +288,59 @@ public class ServiceRegistry extends AbstractVerticle {
         SimpleDateFormat timeFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
         timeFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
         return timeFormat.format(Calendar.getInstance().getTime());
+    }
+
+    private JsonObject buildServiceInfoForEntryPoint(JsonObject message) {
+        final JsonArray servicesArray = message.getJsonArray("services");
+        final List<ServiceInfo> infosUpdate = marschallServiceObjectAndUpdateURLs(prefixWS, prefixHTTP, mainURL, servicesArray);
+        return createServiceInfoJSON(infosUpdate);
+    }
+
+    private JsonObject createServiceInfoJSON(List<ServiceInfo> infosUpdate) {
+        final JsonArray all = new JsonArray();
+        infosUpdate.forEach(handler -> all.add(ServiceInfo.buildFromServiceInfo(handler)));
+        return new JsonObject().put("services", all);
+    }
+
+    private List<ServiceInfo> marschallServiceObjectAndUpdateURLs(String prefixWS, String prefixHTTP, String mainURL, JsonArray servicesArray) {
+        return servicesArray.
+                stream().
+                map(obj -> (JsonObject) obj).
+                map(jsonInfo -> ServiceInfo.buildFromJson(jsonInfo)).
+                map(infoObj -> updateOperationUrl(prefixWS, prefixHTTP, mainURL, infoObj, mainURL.concat(infoObj.getServiceName()), host, port)).
+                collect(Collectors.toList());
+    }
+
+    private ServiceInfo updateOperationUrl(String prefixWS, String prefixHTTP, String mainURL, ServiceInfo infoObj, String serviceURL, String host, int port) {
+        final List<Operation> mappedOperations = Stream.of(infoObj.getOperations()).map(operation -> {
+            final String url = operation.getUrl();
+            final Type type = Type.valueOf(operation.getType());
+            switch (type) {
+                case EVENTBUS:
+                    return null;
+                case WEBSOCKET:
+                    return createOperation(infoObj.getServiceName(), prefixWS, mainURL, host, port, operation, url);
+                default:
+                    return createOperation(infoObj.getServiceName(), prefixHTTP, mainURL, host, port, operation, url);
+
+            }
+        }).collect(Collectors.toList());
+
+        return infoObj.buildFromServiceInfo(serviceURL, mappedOperations.toArray(new Operation[mappedOperations.size()]));
+    }
+
+    private Operation createOperation(String serviceName, String prefix, String mainURL, String host, int port, Operation operation, String url) {
+        return new Operation(operation.getName(),
+                operation.getDescription(),
+                prefix.concat(mainURL).concat(url),
+                operation.getType(),
+                operation.getProduces(),
+                operation.getConsumes(),
+                serviceName,
+                host,
+                port,
+                null,// transient Vertx instance will be set on client side
+                operation.getParameter());
     }
 
 

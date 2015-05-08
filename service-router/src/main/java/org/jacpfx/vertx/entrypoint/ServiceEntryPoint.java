@@ -1,17 +1,21 @@
 package org.jacpfx.vertx.entrypoint;
 
-import io.vertx.core.*;
+import io.vertx.core.AbstractVerticle;
+import io.vertx.core.AsyncResultHandler;
+import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Handler;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpMethod;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
-import io.vertx.core.http.HttpServerRequest;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
-import org.jacpfx.common.*;
+import org.jacpfx.common.GlobalKeyHolder;
+import org.jacpfx.common.ServiceInfo;
+import org.jacpfx.common.ServiceInfoDecoder;
+import org.jacpfx.common.Type;
 import org.jacpfx.vertx.handler.RESTHandler;
 import org.jacpfx.vertx.handler.WSClusterHandler;
 import org.jacpfx.vertx.handler.WSLocalHandler;
@@ -21,9 +25,8 @@ import org.jacpfx.vertx.util.WebSocketRepository;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 /**
@@ -39,8 +42,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private static final Logger log = LoggerFactory.getLogger(ServiceEntryPoint.class);
     public static final String WS_REPLY = "ws.reply";
     public static final String WS_REPLY_TO_ALL = "ws.replyToAll";
-    private static final String prefixWS = "ws://";
-    private static final String prefixHTTP = "http://";
+
 
 
     private final Set<String> registeredRoutes = new HashSet<>();
@@ -57,9 +59,10 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private String wsReplyToAllPath;
     private String serviceRegistry;
     private String host;
+    private int port;
     private String mainURL;
     private boolean clustered;
-    private int port;
+
     private int defaultServiceTimeout;
 
     public static String getHostName() {
@@ -93,7 +96,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
         vertx.eventBus().consumer(wsReplyToAllPath, (Handler<Message<byte[]>>) message -> wsHandler.replyToAllWS(message));
         vertx.eventBus().consumer(serviceRegisterPath, this::serviceRegisterHandler);
         vertx.eventBus().consumer(serviceUnRegisterPath, this::serviceUnRegisterHandler);
-        DeploymentOptions options = new DeploymentOptions().setWorker(false).setConfig(new JsonObject().put("cluster", true));
+        DeploymentOptions options = new DeploymentOptions().setWorker(false).setConfig(vertx.getOrCreateContext().config().put("cluster", true));
         vertx.deployVerticle(serviceRegistry, options);
 
         initHTTPConnector();
@@ -109,7 +112,11 @@ public class ServiceEntryPoint extends AbstractVerticle {
         HttpServer server = vertx.createHttpServer(new HttpServerOptions().setHost(host)
                 .setPort(port));
         registerWebSocketHandler(server);
-        routeMatcher.matchMethod(HttpMethod.GET, serviceInfoPath, this::registerInfoHandler);
+        // TODO provide a WebSocket and a EventBus access to ServiceInfo ... this must be routed through the Router to enrich the service info with metadata from the router
+        routeMatcher.matchMethod(HttpMethod.GET, serviceInfoPath, request -> fetchRegitryAndUpdateMetadata((serviceInfo -> {
+            request.response().putHeader("content-type", "text/json");
+            request.response().end(serviceInfo.encodePrettily());
+        })));
         routeMatcher.noMatch(handler -> handler.response().end("no route found"));
         server.requestHandler(routeMatcher::accept).listen(res -> {
 
@@ -156,6 +163,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
         final EventBus eventBus = vertx.eventBus();
         Stream.of(info.getOperations()).forEach(operation -> {
                     final String type = operation.getType();
+                    // TODO use "better" key than a simple relative url
                     final String url = operation.getUrl();
                     final String[] mimes = operation.getProduces() != null ? operation.getProduces() : new String[]{""};
                     // TODO specify timeout in service info object, so that every Service can specify his own timeout
@@ -188,76 +196,28 @@ public class ServiceEntryPoint extends AbstractVerticle {
     }
 
 
-    private void registerInfoHandler(HttpServerRequest request) {
-        request.response().putHeader("content-type", "text/json");
-        vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_GET, "xyz", (AsyncResultHandler<Message<JsonObject>>) h ->
+    private void fetchRegitryAndUpdateMetadata(Consumer<JsonObject> request) {
+        vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_GET, "xyz", (AsyncResultHandler<Message<JsonObject>>) serviceInfo ->
                 {
-
                     // TODO move this to static factory
-                    final JsonObject result = buildServiceInfoForEntryPoint(h);
-                    request.response().end(result.encodePrettily());
+                    // TODO add TTL cache
+                    // TODO this should work but it didn't vertx.executeBlocking((Handler<Future<JsonObject>> )future->buildServiceInfoForEntryPoint(serviceInfo),(updatedServiceInfo->request.accept(updatedServiceInfo.result())));
+                    request.accept(serviceInfo.result().body());
+
                 }
 
         );
     }
 
-    private JsonObject buildServiceInfoForEntryPoint(AsyncResult<Message<JsonObject>> h) {
-        final Message<JsonObject> message = h.result();
-        final JsonArray servicesArray = message.body().getJsonArray("services");
-        final List<ServiceInfo> infosUpdate = marschallServiceObjectAndUpdateURLs(prefixWS, prefixHTTP, mainURL, servicesArray);
-        return createServiceInfoJSON(infosUpdate);
-    }
 
-    private JsonObject createServiceInfoJSON(List<ServiceInfo> infosUpdate) {
-        final JsonArray all = new JsonArray();
-        infosUpdate.forEach(handler -> all.add(ServiceInfo.buildFromServiceInfo(handler)));
-        return new JsonObject().put("services", all);
-    }
-
-    private List<ServiceInfo> marschallServiceObjectAndUpdateURLs(String prefixWS, String prefixHTTP, String mainURL, JsonArray servicesArray) {
-        return servicesArray.
-                stream().
-                map(obj -> (JsonObject) obj).
-                map(jsonInfo -> ServiceInfo.buildFromJson(jsonInfo)).
-                map(infoObj -> updateOperationUrl(prefixWS, prefixHTTP, mainURL, infoObj, mainURL.concat(infoObj.getServiceName()), host, port)).
-                collect(Collectors.toList());
-    }
-
-    private ServiceInfo updateOperationUrl(String prefixWS, String prefixHTTP, String mainURL, ServiceInfo infoObj, String serviceURL, String host, int port) {
-        final List<Operation> mappedOperations = Stream.of(infoObj.getOperations()).map(operation -> {
-            final String url = operation.getUrl();
-            final Type type = Type.valueOf(operation.getType());
-            switch (type) {
-                case EVENTBUS:
-                    return null;
-                case WEBSOCKET:
-                    return createOperation(infoObj.getServiceName(), prefixWS, mainURL, host, port, operation, url);
-                default:
-                    return createOperation(infoObj.getServiceName(), prefixHTTP, mainURL, host, port, operation, url);
-
-            }
-        }).collect(Collectors.toList());
-
-        return infoObj.buildFromServiceInfo(serviceURL, mappedOperations.toArray(new Operation[mappedOperations.size()]));
-    }
-
-    private Operation createOperation(String serviceName, String prefix, String mainURL, String host, int port, Operation operation, String url) {
-        return new Operation(operation.getName(),
-                operation.getDescription(),
-                prefix.concat(mainURL).concat(url),
-                operation.getType(),
-                operation.getProduces(),
-                operation.getConsumes(),
-                serviceName,
-                host,
-                port,
-                null,
-                operation.getParameter());
-    }
 
 
     private void registerWebSocketHandler(HttpServer server) {
         server.websocketHandler((serverSocket) -> {
+            if (serverSocket.path().equals("wsServiceInfo")) {
+                // TODO implement serviceInfo request
+                return;
+            }
             System.out.println("connect socket to path: " + serverSocket.path());
             serverSocket.pause();
             serverSocket.exceptionHandler(ex -> {
