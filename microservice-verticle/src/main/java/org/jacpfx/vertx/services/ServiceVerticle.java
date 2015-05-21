@@ -12,14 +12,15 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
 import org.jacpfx.common.*;
-import org.jacpfx.common.Parameter;
 import org.jacpfx.common.spi.GSonConverter;
 import org.jacpfx.common.spi.JSONConverter;
+import org.jacpfx.vertx.registry.ServiceDiscovery;
 
 import javax.ws.rs.*;
 import java.io.IOException;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.*;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
@@ -39,6 +40,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private ServiceInfo descriptor;
     private static final String HOST_PREFIX = "";
+    protected ServiceDiscovery dicovery;
 
     @Override
     public final void start(final Future<Void> startFuture) {
@@ -48,6 +50,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         // register info handler
         vertx.eventBus().consumer(serviceName() + "-info", this::info);
         registerService(startFuture);
+        dicovery = ServiceDiscovery.getInstance(this.getVertx());
         long endTime = System.currentTimeMillis();
         System.out.println("start time: " + (endTime - startTime) + "ms");
     }

@@ -14,7 +14,6 @@ import org.junit.Test;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
@@ -79,10 +78,8 @@ public class ServiceDiscoveryTest extends VertxTestBase {
             assertEquals(true, result.body());
             ServiceDiscovery.getInstance(this.getVertx()).getService(TESTSERVICE1, (serviceResult) -> {
                 assertEquals(true, serviceResult.succeeded());
-                Optional<ServiceInfo> optional = serviceResult.getServiceInfo();
-                boolean present = optional.isPresent();
-                assertEquals(true, present);
-                optional.ifPresent(si -> assertEquals(true, si.getServiceName().equals(TESTSERVICE1)));
+                ServiceInfo si = serviceResult.getServiceInfo();
+                assertEquals(true, si.getServiceName().equals(TESTSERVICE1));
                 System.out.println("testSimpleGetServiceByVetrx finished");
                 testComplete();
             });
@@ -100,16 +97,13 @@ public class ServiceDiscoveryTest extends VertxTestBase {
             assertEquals(true, result.body());
             ServiceDiscovery.getInstance(this.getVertx()).getService(TESTSERVICE1, (serviceResult) -> {
                 assertEquals(true, serviceResult.succeeded());
-                Optional<ServiceInfo> optional = serviceResult.getServiceInfo();
-                boolean present = optional.isPresent();
-                assertEquals(true, present);
-                optional.ifPresent(si -> {
-                    assertEquals(true, si.getServiceName().equals(TESTSERVICE1));
-                    Optional<Operation> opOptional = si.getOperation("/operation1");
-                    assertEquals(true, opOptional.isPresent());
-                    opOptional.ifPresent(op -> assertEquals(true, op.getName().equals("/operation1")));
-                    testComplete();
+                ServiceInfo si = serviceResult.getServiceInfo();
+                assertEquals(true, si.getServiceName().equals(TESTSERVICE1));
+                si.getOperation("/operation1",opResult->{
+                    assertEquals(true,opResult.succeeded());
+                    assertEquals(true, opResult.getOperation().getName().equals("/operation1"));
                 });
+                testComplete();
                 System.out.println("testSimpleGetServiceOperationByVetrx finished");
             });
 
@@ -126,16 +120,11 @@ public class ServiceDiscoveryTest extends VertxTestBase {
             assertEquals(true, result.body());
             ServiceDiscovery.getInstance(this.getVertx()).getService(TESTSERVICE1, (serviceResult) -> {
                 assertEquals(true, serviceResult.succeeded());
-                Optional<ServiceInfo> optional = serviceResult.getServiceInfo();
-                boolean present = optional.isPresent();
-                assertEquals(true, present);
-                optional.ifPresent(si -> {
-                    assertEquals(true, si.getServiceName().equals(TESTSERVICE1));
-                    assertEquals(true, si.getOperationsByType(Type.REST_GET).collect(Collectors.toList()).size() == 4);
-                    assertEquals(true, si.getOperationsByType(Type.WEBSOCKET).collect(Collectors.toList()).size() == 2);
-                    testComplete();
-
-                });
+                ServiceInfo si = serviceResult.getServiceInfo();
+                assertEquals(true, si.getServiceName().equals(TESTSERVICE1));
+                assertEquals(true, si.getOperationsByType(Type.REST_GET).collect(Collectors.toList()).size() == 4);
+                assertEquals(true, si.getOperationsByType(Type.WEBSOCKET).collect(Collectors.toList()).size() == 2);
+                testComplete();
                 System.out.println("testSimpleGetServiceTypedOperationByVetrx finished");
 
             });

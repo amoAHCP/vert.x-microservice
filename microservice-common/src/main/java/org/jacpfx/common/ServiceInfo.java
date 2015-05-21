@@ -4,10 +4,12 @@ import io.vertx.core.Vertx;
 import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 
+import javax.management.ServiceNotFoundException;
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -40,6 +42,19 @@ public class ServiceInfo implements Serializable {
         this.description = description;
         this.operations = operations;
         this.vertx = vertx;
+    }
+
+    /**
+     * Constructor to be used in ServiceDiscovery, adds vertx reference on client side
+     * @param info
+     * @param vertx
+     */
+    public ServiceInfo(ServiceInfo info, Vertx vertx) {
+        this(info.serviceName, info.lastConnection, info.hostName, info.serviceURL, info.description,vertx,
+                Stream.of(info.operations).
+                        map(op -> new Operation(op, vertx)).
+                        collect(Collectors.toList()).
+                        toArray(new Operation[info.operations.length]));
     }
 
     public String getLastConnection() {
@@ -79,8 +94,14 @@ public class ServiceInfo implements Serializable {
         return Stream.of(operations).filter(op -> op.getName().equalsIgnoreCase(name));
     }
 
-    public Optional<Operation> getOperation(final String name) {
-        return Stream.of(operations).filter(op -> op.getName().equalsIgnoreCase(name)).findFirst();
+    public ServiceInfo getOperation(final String name, Consumer<OperationResult> consumer) {
+        final Optional<Operation> first = Stream.of(operations).filter(op -> op.getName().equalsIgnoreCase(name)).findFirst();
+        if(first.isPresent()){
+             consumer.accept(new OperationResult(first.get(),true,null));
+        }   else {
+            consumer.accept(new OperationResult(null,false,new ServiceNotFoundException("no operation "+name+" was found")));
+        }
+        return this;
     }
 
     public Stream<Operation> getOperationsByType(final Type type) {

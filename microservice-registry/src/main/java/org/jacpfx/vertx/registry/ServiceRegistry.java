@@ -6,7 +6,6 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.json.JsonArray;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
@@ -92,21 +91,31 @@ public class ServiceRegistry extends AbstractVerticle {
 
     }
 
-    private void getServicesInfo(Message<JsonObject> message) {
+    private void getServicesInfo(Message<byte[]> message) {
         log.info("service info: " + message.body());
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap(GlobalKeyHolder.REGISTRY_MAP_KEY, onSuccess(resultMap ->
                         getServiceHolderAndReplyToServiceInfoRequest(message, resultMap)
         ));
     }
 
-    private void getServiceHolderAndReplyToServiceInfoRequest(Message<JsonObject> message, AsyncMap<String, ServiceInfoHolder> resultMap) {
+    private void getServiceHolderAndReplyToServiceInfoRequest(Message<byte[]> message, AsyncMap<String, ServiceInfoHolder> resultMap) {
         resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(resultHolder -> {
             if (resultHolder != null) {
-                message.reply(buildServiceInfoForEntryPoint(resultHolder.getServiceInfo()));
+                final ServiceInfoHolder serviceInfoHolder = buildServiceInfoForEntryPoint(resultHolder);
+                message.reply(getServiceIfoHolderBinary(serviceInfoHolder));
             } else {
-                message.reply(new JsonObject().put("services", new JsonArray()));
+                message.reply(getServiceIfoHolderBinary(new ServiceInfoHolder()));
             }
         }));
+    }
+
+    private byte[] getServiceIfoHolderBinary(ServiceInfoHolder resultHolder) {
+        try {
+            return Serializer.serialize(resultHolder);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return new byte[]{};
     }
 
     protected <T> Handler<AsyncResult<T>> onSuccess(Consumer<T> consumer) {
@@ -290,26 +299,12 @@ public class ServiceRegistry extends AbstractVerticle {
         return timeFormat.format(Calendar.getInstance().getTime());
     }
 
-    private JsonObject buildServiceInfoForEntryPoint(JsonObject message) {
-        final JsonArray servicesArray = message.getJsonArray("services");
-        final List<ServiceInfo> infosUpdate = marschallServiceObjectAndUpdateURLs(prefixWS, prefixHTTP, mainURL, servicesArray);
-        return createServiceInfoJSON(infosUpdate);
+    private ServiceInfoHolder buildServiceInfoForEntryPoint(ServiceInfoHolder message) {
+        return new ServiceInfoHolder(message.getAll().stream().
+                map(info->updateOperationUrl(prefixWS, prefixHTTP, mainURL, info, mainURL.concat(info.getServiceName()), host, port)).
+                collect(Collectors.toList()));
     }
 
-    private JsonObject createServiceInfoJSON(List<ServiceInfo> infosUpdate) {
-        final JsonArray all = new JsonArray();
-        infosUpdate.forEach(handler -> all.add(ServiceInfo.buildFromServiceInfo(handler)));
-        return new JsonObject().put("services", all);
-    }
-
-    private List<ServiceInfo> marschallServiceObjectAndUpdateURLs(String prefixWS, String prefixHTTP, String mainURL, JsonArray servicesArray) {
-        return servicesArray.
-                stream().
-                map(obj -> (JsonObject) obj).
-                map(jsonInfo -> ServiceInfo.buildFromJson(jsonInfo)).
-                map(infoObj -> updateOperationUrl(prefixWS, prefixHTTP, mainURL, infoObj, mainURL.concat(infoObj.getServiceName()), host, port)).
-                collect(Collectors.toList());
-    }
 
     private ServiceInfo updateOperationUrl(String prefixWS, String prefixHTTP, String mainURL, ServiceInfo infoObj, String serviceURL, String host, int port) {
         final List<Operation> mappedOperations = Stream.of(infoObj.getOperations()).map(operation -> {

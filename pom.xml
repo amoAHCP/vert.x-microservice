@@ -38,7 +38,7 @@
 
 
         <!--Dependency versions-->
-        <vertx.version>3.0.0-milestone4</vertx.version>
+        <vertx.version>3.0.0-milestone5</vertx.version>
 
         <junit.version>4.11</junit.version>
 

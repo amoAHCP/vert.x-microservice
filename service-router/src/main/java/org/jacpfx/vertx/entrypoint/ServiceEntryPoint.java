@@ -12,16 +12,14 @@ import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
-import org.jacpfx.common.GlobalKeyHolder;
-import org.jacpfx.common.ServiceInfo;
-import org.jacpfx.common.ServiceInfoDecoder;
-import org.jacpfx.common.Type;
+import org.jacpfx.common.*;
 import org.jacpfx.vertx.handler.RESTHandler;
 import org.jacpfx.vertx.handler.WSClusterHandler;
 import org.jacpfx.vertx.handler.WSLocalHandler;
 import org.jacpfx.vertx.util.CustomRouteMatcher;
 import org.jacpfx.vertx.util.WebSocketRepository;
 
+import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashSet;
@@ -197,12 +195,21 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
 
     private void fetchRegitryAndUpdateMetadata(Consumer<JsonObject> request) {
-        vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_GET, "xyz", (AsyncResultHandler<Message<JsonObject>>) serviceInfo ->
+        vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_GET, "xyz", (AsyncResultHandler<Message<byte[]>>) serviceInfo ->
                 {
                     // TODO move this to static factory
                     // TODO add TTL cache
                     // TODO this should work but it didn't vertx.executeBlocking((Handler<Future<JsonObject>> )future->buildServiceInfoForEntryPoint(serviceInfo),(updatedServiceInfo->request.accept(updatedServiceInfo.result())));
-                    request.accept(serviceInfo.result().body());
+                    byte[] infoBytes = serviceInfo.result().body();
+                    ServiceInfoHolder holder = null;
+                    try {
+                        holder = (ServiceInfoHolder) Serializer.deserialize(infoBytes);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    } catch (ClassNotFoundException e) {
+                        e.printStackTrace();
+                    }
+                    request.accept(holder.getServiceInfo());
 
                 }
 

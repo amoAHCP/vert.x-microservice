@@ -1,15 +1,12 @@
 package org.jacpfx.common;
 
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 
 /**
- * The ServiceInforResult returns a stream of serviceInfo references. It will be returned by the ServiceDiscovery handler when looking for a specific service.
- * Created by Andy Moncsek on 05.05.15.
+ * Created by Andy Moncsek on 21.05.15.
  */
-public class ServiceInfoResult {
-
-    private final Stream<ServiceInfo> serviceInfoStream;
+public class OperationResult {
+    private final Operation operation;
     private final boolean succeeded;
     private final Throwable cause;
 
@@ -17,30 +14,22 @@ public class ServiceInfoResult {
     /**
      * The default constructor
      *
-     * @param serviceInfoStream The stream of ServiceInfos found
+     * @param operation The stream of ServiceInfos found
      * @param succeeded         the connection status
      * @param cause             The failure caus
      */
-    public ServiceInfoResult(Stream<ServiceInfo> serviceInfoStream, boolean succeeded, Throwable cause) {
-        this.serviceInfoStream = serviceInfoStream;
+    public OperationResult(Operation operation, boolean succeeded, Throwable cause) {
+        this.operation = operation;
         this.succeeded = succeeded;
         this.cause = cause;
     }
 
-    /**
-     * The stream of services found
-     *
-     * @return a stream with requested ServiceInfos
-     */
-    public Stream<ServiceInfo> getServiceInfoStream() {
-        return serviceInfoStream;
-    }
 
     /**
      * The ServiceInfo
      * @return Returns the  serviceInfo
      */
-    public ServiceInfo getServiceInfo() { return serviceInfoStream.findFirst().get();}
+    public Operation getOperation() { return operation;}
 
 
 
@@ -71,12 +60,12 @@ public class ServiceInfoResult {
         return cause;
     }
 
-    public static Consumer<ServiceInfoResult> onSuccessService(Consumer<ServiceInfo> consumer, Consumer<Throwable> onFail) {
+    public static Consumer<OperationResult> onSuccessOp(Consumer<Operation> consumer, Consumer<Throwable> onFail) {
         return result -> {
             if (result.failed()) {
                 onFail.accept(result.getCause());
             } else {
-                consumer.accept(result.getServiceInfo());
+                consumer.accept(result.getOperation());
             }
         };
     }

@@ -22,5 +22,13 @@ public class PersonOne implements Serializable {
     public String getLastname() {
         return lastname;
     }
+
+    @Override
+    public String toString() {
+        return "PersonOne{" +
+                "name='" + name + '\'' +
+                ", lastname='" + lastname + '\'' +
+                '}';
+    }
 }
 

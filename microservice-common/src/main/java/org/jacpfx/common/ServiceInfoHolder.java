@@ -14,8 +14,15 @@ import java.util.Optional;
  */
 public class ServiceInfoHolder implements Serializable {
 
-    private final List<ServiceInfo> infos = new ArrayList<>();
 
+
+    private final List<ServiceInfo> infos;
+    public ServiceInfoHolder() {
+        this.infos = new ArrayList<>();
+    }
+    public ServiceInfoHolder(final List<ServiceInfo> infos) {
+        this.infos = infos;
+    }
     public List<ServiceInfo> getAll() {
         return Collections.unmodifiableList(infos);
     }

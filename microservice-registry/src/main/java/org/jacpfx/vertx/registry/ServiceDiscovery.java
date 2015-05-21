@@ -4,14 +4,14 @@ import io.vertx.core.AsyncResult;
 import io.vertx.core.AsyncResultHandler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
-import io.vertx.core.json.JsonArray;
-import io.vertx.core.json.JsonObject;
-import org.jacpfx.common.GlobalKeyHolder;
-import org.jacpfx.common.ServiceInfo;
-import org.jacpfx.common.ServiceInfoResult;
+import org.jacpfx.common.*;
 
+import javax.management.ServiceNotFoundException;
+import java.io.IOException;
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -53,11 +53,15 @@ public class ServiceDiscovery {
 
     private ServiceInfo getServiceInfoByVertx(Consumer<ServiceInfoResult> consumer, Function<ServiceInfo,Boolean> criteria) {
         // TODO add caching mechanism with TTL to reduce
-        vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_GET, "xyz", (AsyncResultHandler<Message<JsonObject>>) h ->
+        vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_GET, "xyz", (AsyncResultHandler<Message<byte[]>>) h ->
                 {
                     if (h.succeeded()) {
-                        final Stream<ServiceInfo> serviceInfos = getServiceInfoFromMessage(h);
-                        consumer.accept(new ServiceInfoResult(serviceInfos.filter(info->criteria.apply(info)),h.succeeded(),h.cause()));
+                        final List<ServiceInfo> serviceInfos = getServiceInfoFromMessage(h).filter(info -> criteria.apply(info)).collect(Collectors.toList());
+                        if(!serviceInfos.isEmpty()){
+                            consumer.accept(new ServiceInfoResult(serviceInfos.stream(),h.succeeded(),h.cause()));
+                        }else {
+                            consumer.accept(new ServiceInfoResult(serviceInfos.stream(),false,new ServiceNotFoundException("selected service not found")));
+                        }
                     } else {
                         consumer.accept(new ServiceInfoResult(Stream.<ServiceInfo>empty(),h.succeeded(),h.cause()));
                     }
@@ -68,9 +72,15 @@ public class ServiceDiscovery {
         return null;
     }
 
-    private Stream<ServiceInfo> getServiceInfoFromMessage(AsyncResult<Message<JsonObject>> h) {
-        Message<JsonObject> message = h.result();
-        final JsonArray servicesArray = message.body().getJsonArray("services");
-        return servicesArray.stream().map(obj -> (JsonObject) obj).map(jsonInfo -> ServiceInfo.buildFromJson(jsonInfo,vertx));
+    private Stream<ServiceInfo> getServiceInfoFromMessage(AsyncResult<Message<byte[]>> h) {
+        ServiceInfoHolder holder = new ServiceInfoHolder();
+        try {
+            holder = (ServiceInfoHolder) Serializer.deserialize(h.result().body());
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+        return holder.getAll().stream().map(i->new ServiceInfo(i,vertx));
     }
 }

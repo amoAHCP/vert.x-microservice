@@ -55,6 +55,10 @@ public class Operation implements Serializable{
         this.connectionPort = connectionPort;
     }
 
+    public Operation(Operation op,Vertx vertx) {
+        this(op.name,op.description,op.url,op.type,op.produces,op.consumes,op.serviceName,op.connectionHost,op.connectionPort,vertx,op.parameter);
+    }
+
     public String getUrl() {
         return url;
     }
@@ -182,6 +186,7 @@ public class Operation implements Serializable{
         result = 31 * result + (parameter != null ? Arrays.hashCode(parameter) : 0);
         return result;
     }
+
 
     @Override
     public String toString() {
