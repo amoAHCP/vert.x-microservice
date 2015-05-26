@@ -23,11 +23,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.MissingResourceException;
-import java.util.Optional;
+import java.util.*;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -52,7 +50,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         registerService(startFuture);
         dicovery = ServiceDiscovery.getInstance(this.getVertx());
         long endTime = System.currentTimeMillis();
-        System.out.println("start time: " + (endTime - startTime) + "ms");
+        log.info("start time: " + (endTime - startTime) + "ms");
     }
 
     private void registerService(final Future<Void> startFuture) {
@@ -64,7 +62,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                     try {
                         //GlobalKeyHolder.SERVICE_REGISTRY_REGISTER
                         vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(descriptor), handler -> {
-                            System.out.println("Register Service: " + handler.succeeded());
+                            log.info("Register Service: " + handler.succeeded());
                             startFuture.complete();
                         });
                     } catch (IOException e) {
@@ -78,7 +76,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     private ServiceInfo createInfoObject(List<Operation> operations) {
-        return new ServiceInfo(serviceName(),null,getHostName(),null,null,operations.toArray(new Operation[operations.size()]));
+        return new ServiceInfo(serviceName(), null, getHostName(), null, null, operations.toArray(new Operation[operations.size()]));
     }
 
     public String getHostName() {
@@ -115,13 +113,13 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
     private Operation mapServiceMethod(Method method) {
         final Path path = method.getDeclaredAnnotation(Path.class);
-        final Produces mime = method.getDeclaredAnnotation(Produces.class);
+        final Produces produces = method.getDeclaredAnnotation(Produces.class);
         final Consumes consumes = method.getDeclaredAnnotation(Consumes.class);
         final OperationType opType = method.getDeclaredAnnotation(OperationType.class);
         if (opType == null)
             throw new MissingResourceException("missing OperationType ", this.getClass().getName(), "");
-        final String[] mimeTypes = mime != null ? mime.value() : null;
-        final String[] consumeTypes = consumes!=null? consumes.value() : null;
+        final String[] mimeTypes = produces != null ? produces.value() : null;
+        final String[] consumeTypes = consumes != null ? consumes.value() : null;
         final String url = serviceName().concat(path.value());
         final List<String> parameters = new ArrayList<>();
 
@@ -136,17 +134,41 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                 break;
             case WEBSOCKET:
                 parameters.addAll(getWSParameter(method));
-                vertx.eventBus().consumer(url, (Handler<Message<byte[]>>)handler -> genericWSHandler(handler, method));
+                vertx.eventBus().consumer(url, (Handler<Message<byte[]>>) handler -> genericWSHandler(handler, method));
                 break;
             case EVENTBUS:
+                List<String> parameter = getEVENTBUSParameter(method);
+                parameters.addAll(parameter);
+
+                registerEventBusMethod(method, consumes, url, parameter);
                 break;
         }
-         // TODO add service description!!!
-        return new Operation(path.value(),null,url,opType.value().name(),mimeTypes,consumeTypes,parameters.toArray(new String[parameters.size()]));
+        // TODO add service description!!!
+        return new Operation(path.value(), null, url, opType.value().name(), mimeTypes, consumeTypes, parameters.toArray(new String[parameters.size()]));
     }
+
+    private void registerEventBusMethod(Method method, Consumes consumes, String url, List<String> parameter) {
+        Class<?> clazzParameter = null;
+        try {
+            clazzParameter = parameter.isEmpty()?null:Class.forName(parameter.get(0));
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        if (isBinary(consumes)) {
+            vertx.eventBus().consumer(url, (Handler<Message<byte[]>>) handler -> binaryEBHandler(handler,method));
+        } else if(isJSON(consumes)) {
+            vertx.eventBus().consumer(url, handler -> objectEBHandler(handler,method));
+        } else if (clazzParameter!=null && TypeTool.isCompatibleType(clazzParameter)) {
+            vertx.eventBus().consumer(url, handler -> objectEBHandler(handler,method));
+        }
+    }
+
+
 
     /**
      * Retrieving a list of all possible REST parameters in method signature
+     *
      * @param method the method to analyse
      * @return a List of all available parameters on method
      */
@@ -159,16 +181,30 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     /**
+     * Retrieving a list of all possible eventbus method paramaters
+     *
+     * @param method
+     * @return a List of all available parameters on method
+     */
+    private List<String> getEVENTBUSParameter(Method method) {
+        final Class<?>[] parameterTypes = method.getParameterTypes();
+        final List<Class> classes = Stream.of(parameterTypes).filter(c -> !c.equals(EBMessageReply.class)).collect(Collectors.toList());
+        if (classes.size() > 1) throw new IllegalArgumentException("only one parameter is allowed");
+        return classes.stream().map(c -> c.getName()).collect(Collectors.toList());
+    }
+
+    /**
      * Retrieving a list (note only one parameter is allowed) of all possible ws method paramaters
+     *
      * @param method
      * @return a List of all available parameters on method
      */
     private List<String> getWSParameter(Method method) {
         final Class<?>[] parameterTypes = method.getParameterTypes();
         // TODO, instead of returning the class names of the parameter return a json representation if methods @Consumes annotation defines application/json. Be aware of String, Integer....
-        final List<Class> classes = Stream.of(parameterTypes).filter(c -> !c.equals(MessageReply.class)).collect(Collectors.toList());
-        if(classes.size()>1) throw new IllegalArgumentException("only one parameter is allowed");
-        return classes.stream().map(c->c.getName()).collect(Collectors.toList());
+        final List<Class> classes = Stream.of(parameterTypes).filter(c -> !c.equals(WSMessageReply.class)).collect(Collectors.toList());
+        if (classes.size() > 1) throw new IllegalArgumentException("only one parameter is allowed");
+        return classes.stream().map(c -> c.getName()).collect(Collectors.toList());
     }
 
     /**
@@ -245,24 +281,78 @@ public abstract class ServiceVerticle extends AbstractVerticle {
             m.fail(200, e.getMessage());
         }
     }
+
     /**
      * executes a requested Service Method in ServiceVerticle
      *
-     * @param m
+     * @param handler
      * @param method
      */
-    private void genericWSHandler(Message<byte[]> m, Method method) {
+    private void genericWSHandler(Message<byte[]> handler, Method method) {
+        genericVoidMethodInvocation(handler,method,()-> invokeWSParameters(handler, method));
+    }
+
+    private void objectEBHandler(Message<Object> handler,Method method) {
+        genericVoidMethodInvocation(handler,method,()-> invokeObjectEBParameters(handler, method));
+
+    }
+
+    private void binaryEBHandler(Message<byte[]> handler,Method method) {
+        genericVoidMethodInvocation(handler,method,()->invokeBinaryEBParameters(handler, method));
+    }
+
+    private void genericVoidMethodInvocation(Message handler,Method method, Supplier<Object[]> supplier) {
         try {
-            System.out.println("got WS message");
-            // TODO check @Consumes annotation to serialize the correct way
-            final Object replyValue = method.invoke(this, invokeWSParameters(m, method));
-            // TODO ws services should not have a reply value!!
+            method.invoke(this, supplier.get());
         } catch (IllegalAccessException e) {
             e.printStackTrace();
-            m.fail(200, e.getMessage());
+            handler.fail(200, e.getMessage());
         } catch (InvocationTargetException e) {
-            m.fail(200, e.getMessage());
+            handler.fail(200, e.getMessage());
         }
+    }
+
+    private Object[] invokeBinaryEBParameters(Message<byte[]> m, Method method) {
+        // final Object wrapper = getData(m);
+        byte[] tmp = m.body();
+        final java.lang.reflect.Parameter[] parameters = method.getParameters();
+        final Object[] parameterResult = new Object[parameters.length];
+        final Consumes consumes = method.getDeclaredAnnotation(Consumes.class);
+        int i = 0;
+        for (java.lang.reflect.Parameter p : parameters) {
+            if (p.getType().equals(EBMessageReply.class)) {
+                parameterResult[i] = new EBMessageReply(this.vertx.eventBus(), m);
+            } else {
+                putTypedEBParameter(consumes, parameterResult, p, i, tmp);
+            }
+
+            i++;
+        }
+
+        return parameterResult;
+    }
+
+    private Object[] invokeObjectEBParameters(Message<Object> m, Method method) {
+        // final Object wrapper = getData(m);
+        final java.lang.reflect.Parameter[] parameters = method.getParameters();
+        final Object[] parameterResult = new Object[parameters.length];
+        final Consumes consumes = method.getDeclaredAnnotation(Consumes.class);
+        int counter = 0;
+        for (java.lang.reflect.Parameter p : parameters) {
+            if (p.getType().equals(EBMessageReply.class)) {
+                parameterResult[counter] = new EBMessageReply(this.vertx.eventBus(), m);
+            } else {
+                if (TypeTool.isCompatibleType(p.getType())) {
+                    parameterResult[counter] = p.getType().cast(m.body());
+                } else {
+                    parameterResult[counter] = getConverter().convertToObject(String.valueOf(m.body()), p.getType());
+                }
+            }
+
+            counter++;
+        }
+
+        return parameterResult;
     }
 
     private Object[] invokeWSParameters(Message<byte[]> m, Method method) {
@@ -271,17 +361,30 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         final Object[] parameterResult = new Object[parameters.length];
         final Consumes consumes = method.getDeclaredAnnotation(Consumes.class);
         int i = 0;
-        for(java.lang.reflect.Parameter p :parameters) {
-             if(p.getType().equals(MessageReply.class)) {
-                 parameterResult[i] = new MessageReply(wrapper.getEndpoint(),this.vertx.eventBus());
-             }  else {
-                 putTypedParameter(consumes,parameterResult,p,i,wrapper.getData());
-             }
+        for (java.lang.reflect.Parameter p : parameters) {
+            if (p.getType().equals(WSMessageReply.class)) {
+                parameterResult[i] = new WSMessageReply(wrapper.getEndpoint(), this.vertx.eventBus());
+            } else {
+                putTypedWSParameter(consumes, parameterResult, p, i, wrapper.getData());
+            }
 
             i++;
         }
 
         return parameterResult;
+    }
+
+    private Object getData(Message<byte[]> m) {
+        Object data = null;
+        try {
+            data = Serializer.deserialize(m.body());
+        } catch (IOException e) {
+            e.printStackTrace();
+        } catch (ClassNotFoundException e) {
+            e.printStackTrace();
+        }
+
+        return data;
     }
 
     private WSDataWrapper getWSDataWrapper(Message<byte[]> m) {
@@ -311,7 +414,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
      * @return an array with all valid method parameters
      */
     private Object[] invokePatameters(Message<byte[]> m, Method method) {
-        final Parameter<String> params=getParameterObject(m);
+        final Parameter<String> params = getParameterObject(m);
         final Annotation[][] parameterAnnotations = method.getParameterAnnotations();
         final Class[] parameterTypes = method.getParameterTypes();
         final Object[] parameters = new Object[parameterAnnotations.length];
@@ -336,7 +439,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     private Parameter<byte[]> getObjectParameter(Message<byte[]> m) {
-        Parameter<byte[]> params=null;
+        Parameter<byte[]> params = null;
         try {
             params = (Parameter<byte[]>) Serializer.deserialize(m.body());
         } catch (IOException e) {
@@ -349,7 +452,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
 
     private Parameter<String> getParameterObject(Message<byte[]> m) {
-        Parameter<String> params=null;
+        Parameter<String> params = null;
         try {
             params = (Parameter<String>) Serializer.deserialize(m.body());
         } catch (IOException e) {
@@ -378,20 +481,45 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         }
     }
 
-    private void putTypedParameter(final Consumes consumes,final Object[] parameterResult,final java.lang.reflect.Parameter p,final int counter,final byte[] myParameter) {
-        if(p.getType().equals(String.class)){
+    private void putTypedEBParameter(final Consumes consumes, final Object[] parameterResult, final java.lang.reflect.Parameter p, final int counter, final byte[] myParameter) {
+        if (p.getType().equals(String.class)) {
             parameterResult[counter] = new String(myParameter);
-        }  else {
+        } else {
             try {
                 // TODO analyze @Consumes annotation, check for String Integer, or simply cast
-               if(isBinary(consumes)) {
-                   handleBinaryWSParameter(parameterResult, p, counter, myParameter);
-               } else if(isJSON(consumes)) {
-                   handleJSONWSParameter(parameterResult, p, counter, myParameter);
-               } else {
-                   // check for application/octet-stream or application/json
-                   handleBinaryWSParameter(parameterResult, p, counter, myParameter);
-               }
+                if (isBinary(consumes)) {
+                    handleBinaryWSParameter(parameterResult, p, counter, myParameter);
+                } else if (isJSON(consumes)) {
+                    handleJSONWSParameter(parameterResult, p, counter, myParameter);
+                } else {
+                    // check for application/octet-stream or application/json
+                    handleBinaryWSParameter(parameterResult, p, counter, myParameter);
+                }
+
+            } catch (IOException e) {
+                e.printStackTrace();
+            } catch (ClassNotFoundException e) {
+                e.printStackTrace();
+            }
+        }
+
+
+    }
+
+    private void putTypedWSParameter(final Consumes consumes, final Object[] parameterResult, final java.lang.reflect.Parameter p, final int counter, final byte[] myParameter) {
+        if (p.getType().equals(String.class)) {
+            parameterResult[counter] = new String(myParameter);
+        } else {
+            try {
+                // TODO analyze @Consumes annotation, check for String Integer, or simply cast
+                if (isBinary(consumes)) {
+                    handleBinaryWSParameter(parameterResult, p, counter, myParameter);
+                } else if (isJSON(consumes)) {
+                    handleJSONWSParameter(parameterResult, p, counter, myParameter);
+                } else {
+                    // check for application/octet-stream or application/json
+                    handleBinaryWSParameter(parameterResult, p, counter, myParameter);
+                }
 
             } catch (IOException e) {
                 e.printStackTrace();
@@ -405,16 +533,16 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
     private void handleJSONWSParameter(Object[] parameterResult, java.lang.reflect.Parameter p, int counter, byte[] myParameter) {
         final String jsonString = new String(myParameter);
-        if(p.getType().equals(String.class)) {
+        if (p.getType().equals(String.class)) {
             parameterResult[counter] = jsonString;
-        }else {
-            parameterResult[counter] = getConverter().convertToObject(jsonString,p.getType());
+        } else {
+            parameterResult[counter] = getConverter().convertToObject(jsonString, p.getType());
         }
     }
 
     private void handleBinaryWSParameter(Object[] parameterResult, java.lang.reflect.Parameter p, int counter, byte[] myParameter) throws IOException, ClassNotFoundException {
         Object o = Serializer.deserialize(myParameter);
-        parameterResult[counter] = p.getType().cast(o) ;
+        parameterResult[counter] = p.getType().cast(o);
     }
 
     private JSONConverter getConverter() {
@@ -423,16 +551,16 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     private boolean isBinary(final Consumes consumes) {
-        if(consumes==null || consumes.value().length==0) return false;
+        if (consumes == null || consumes.value().length == 0) return false;
         Optional<String> result = Stream.of(consumes.value()).filter(val -> val.equalsIgnoreCase("application/octet-stream")).findFirst();
-        if(result.isPresent()) return true;
+        if (result.isPresent()) return true;
         return false;
     }
 
     private boolean isJSON(final Consumes consumes) {
-        if(consumes==null || consumes.value().length==0) return false;
+        if (consumes == null || consumes.value().length == 0) return false;
         Optional<String> result = Stream.of(consumes.value()).filter(val -> val.equalsIgnoreCase("application/json")).findFirst();
-        if(result.isPresent()) return true;
+        if (result.isPresent()) return true;
         return false;
     }
 
@@ -443,12 +571,11 @@ public abstract class ServiceVerticle extends AbstractVerticle {
             m.reply(Serializer.serialize(getServiceDescriptor()), new DeliveryOptions().setSendTimeout(10000));
         } catch (IOException e) {
             e.printStackTrace();
-        }  catch (Exception e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 
     }
-
 
 
     public ServiceInfo getServiceDescriptor() {

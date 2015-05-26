@@ -10,7 +10,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
-import org.jacpfx.common.MessageReply;
+import org.jacpfx.common.WSMessageReply;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Type;
 import org.jacpfx.vertx.services.ServiceVerticle;
@@ -146,7 +146,7 @@ public class WSTimerTest extends VertxTestBase {
         @Path("/testSimpleTimerToAll")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void testSimpleString(String name, MessageReply reply) {
+        public void testSimpleString(String name, WSMessageReply reply) {
             System.out.println("GOT MESSAGE");
             this.getVertx().setPeriodic(2000, (arg) -> {
                 System.out.println("SEND MESSAGE");

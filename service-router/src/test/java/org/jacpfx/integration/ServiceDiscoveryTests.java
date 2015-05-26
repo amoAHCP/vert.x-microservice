@@ -10,7 +10,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
-import org.jacpfx.common.MessageReply;
+import org.jacpfx.common.WSMessageReply;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.ServiceInfo;
 import org.jacpfx.common.Type;
@@ -227,13 +227,13 @@ public class ServiceDiscoveryTests extends VertxTestBase {
     public class WsServiceOne extends ServiceVerticle {
         @Path("/wsEndpointOne")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointOne(String name, MessageReply reply) {
+        public void wsEndpointOne(String name, WSMessageReply reply) {
             reply.reply(name);
         }
 
         @Path("/wsEndpointTwo")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointTwo(String name, MessageReply reply) {
+        public void wsEndpointTwo(String name, WSMessageReply reply) {
             final ServiceDiscovery dicovery = ServiceDiscovery.getInstance(this.getVertx());
             dicovery.getService(SERVICE_REST_GET2, (serviceResult) -> {
                 if (serviceResult.succeeded()) {
@@ -253,7 +253,7 @@ public class ServiceDiscoveryTests extends VertxTestBase {
         @Path("/wsEndpointThree")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void wsEndpointThree(final PersonOne p1, MessageReply reply) {
+        public void wsEndpointThree(final PersonOne p1, WSMessageReply reply) {
 
             final ServiceDiscovery dicovery = ServiceDiscovery.getInstance(this.getVertx());
             dicovery.getService(SERVICE_REST_GET2, (serviceResult) -> {
@@ -278,13 +278,13 @@ public class ServiceDiscoveryTests extends VertxTestBase {
     public class WsServiceTwo extends ServiceVerticle {
         @Path("/wsServiceTwoOne")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointOne(String name, MessageReply reply) {
+        public void wsEndpointOne(String name, WSMessageReply reply) {
 
         }
 
         @Path("/wsServiceTwoTwo")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointTwo(String name, MessageReply reply) {
+        public void wsEndpointTwo(String name, WSMessageReply reply) {
 
             reply.reply(name + "-" + "wsServiceTwoTwo");
         }
@@ -292,7 +292,7 @@ public class ServiceDiscoveryTests extends VertxTestBase {
         @Path("/wsServiceTwoThree")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void wsEndpointThree(PersonOneX p2, MessageReply reply) {
+        public void wsEndpointThree(PersonOneX p2, WSMessageReply reply) {
             Gson gg = new Gson();
             reply.reply(gg.toJson(new PersonOne(p2.getName() + "_wsServiceTwoThree", p2.getLastname())));
             System.out.println("wsServiceTwoThree-2: " + p2 + "   :::" + this);
@@ -301,7 +301,7 @@ public class ServiceDiscoveryTests extends VertxTestBase {
         @Path("/wsServiceTwoFour")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void wsEndpointFour(PersonOneX p2, MessageReply reply) {
+        public void wsEndpointFour(PersonOneX p2, WSMessageReply reply) {
 
 
             System.out.println("wsServiceTwoFour-2: " + name + "   :::" + this);

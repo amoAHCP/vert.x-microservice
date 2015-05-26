@@ -12,18 +12,18 @@ import java.util.function.Supplier;
 /**
  * Created by Andy Moncsek on 10.12.14.
  */
-public class MessageReply {
+public class WSMessageReply {
 
     private final static ExecutorService EXECUTOR = Executors.newCachedThreadPool();
 
     private WSEndpoint endpoint;
     private EventBus bus;
 
-    public MessageReply() {
+    public WSMessageReply() {
 
     }
 
-    public MessageReply(WSEndpoint endpoint, EventBus bus) {
+    public WSMessageReply(WSEndpoint endpoint, EventBus bus) {
         this.endpoint = endpoint;
         this.bus = bus;
     }

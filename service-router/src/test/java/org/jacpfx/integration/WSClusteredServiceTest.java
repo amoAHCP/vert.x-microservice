@@ -9,7 +9,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
-import org.jacpfx.common.MessageReply;
+import org.jacpfx.common.WSMessageReply;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Type;
 import org.jacpfx.vertx.services.ServiceVerticle;
@@ -318,13 +318,13 @@ public class WSClusteredServiceTest extends VertxTestBase {
     public class WsServiceOne extends ServiceVerticle {
         @Path("/wsEndpintOne")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointOne(String name, MessageReply reply) {
+        public void wsEndpointOne(String name, WSMessageReply reply) {
 
         }
 
         @Path("/wsEndpintTwo")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointTwo(String name, MessageReply reply) {
+        public void wsEndpointTwo(String name, WSMessageReply reply) {
 
             replyAsyncTwo(name + "-3", reply);
             replyAsyncTwo(name + "-4", reply);
@@ -333,7 +333,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
             System.out.println("wsEndpointTwo-2: " + name + "   :::" + this);
         }
 
-        private void replyAsyncTwo(String name, MessageReply reply) {
+        private void replyAsyncTwo(String name, WSMessageReply reply) {
             reply.replyAsync(() -> {
                 try {
                     TimeUnit.MILLISECONDS.sleep(1000);
@@ -344,7 +344,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
             });
         }
 
-        private void replyToAllAsync(String name, MessageReply reply) {
+        private void replyToAllAsync(String name, WSMessageReply reply) {
             reply.replyToAllAsync(() -> {
                 try {
                     TimeUnit.MILLISECONDS.sleep(1000);
@@ -357,7 +357,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
 
         @Path("/wsEndpintThree")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointThreeReplyToAll(String name, MessageReply reply) {
+        public void wsEndpointThreeReplyToAll(String name, WSMessageReply reply) {
             replyToAllAsync(name + "-3", reply);
             replyToAllAsync(name + "-4", reply);
             replyToAllAsync(name + "-5", reply);
@@ -369,14 +369,14 @@ public class WSClusteredServiceTest extends VertxTestBase {
 
         @Path("/wsEndpintFour")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointThreeReplyToAllTwo(String name, MessageReply reply) {
+        public void wsEndpointThreeReplyToAllTwo(String name, WSMessageReply reply) {
             replyToAllAsync(name + "-3", reply);
             System.out.println("wsEndpointThreeReplyToAllTwo-4: " + name + "   :::" + this);
         }
 
         @Path("/hello")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointHello(String name, MessageReply reply) {
+        public void wsEndpointHello(String name, WSMessageReply reply) {
 
             reply.reply(name + "-2");
             System.out.println("wsEndpointHello-1: " + name + "   :::" + this);
@@ -384,7 +384,7 @@ public class WSClusteredServiceTest extends VertxTestBase {
 
         @Path("/asyncReply")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointAsyncReply(String name, MessageReply reply) {
+        public void wsEndpointAsyncReply(String name, WSMessageReply reply) {
 
             reply.replyAsync(() -> name + "-2");
             System.out.println("wsEndpointAsyncReply-1: " + name + "   :::" + this);

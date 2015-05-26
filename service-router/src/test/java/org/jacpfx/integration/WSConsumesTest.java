@@ -11,7 +11,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
-import org.jacpfx.common.MessageReply;
+import org.jacpfx.common.WSMessageReply;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Serializer;
 import org.jacpfx.common.Type;
@@ -215,27 +215,27 @@ public class WSConsumesTest extends VertxTestBase {
         @Path("/testSimpleString")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void testSimpleString(String name, MessageReply reply) {
+        public void testSimpleString(String name, WSMessageReply reply) {
               reply.reply(name);
         }
 
         @Path("/testSimpleObjectBySerialisation")
         @OperationType(Type.WEBSOCKET)
-        public void testSimpleObjectBySerialisation(PersonOne p1, MessageReply reply) {
+        public void testSimpleObjectBySerialisation(PersonOne p1, WSMessageReply reply) {
             reply.reply(p1.getName());
         }
 
         @Path("/testSimpleObjectByJSONSerialisation")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void testSimpleObjectByJSONSerialisation(PersonOne p1, MessageReply reply) {
+        public void testSimpleObjectByJSONSerialisation(PersonOne p1, WSMessageReply reply) {
             reply.reply(p1.getName());
         }
 
         @Path("/testSimpleObjectByBinarySerialisation")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/octet-stream")
-        public void testSimpleObjectByBinarySerialisation(PersonOne p1, MessageReply reply) {
+        public void testSimpleObjectByBinarySerialisation(PersonOne p1, WSMessageReply reply) {
             reply.reply(p1.getName());
         }
 

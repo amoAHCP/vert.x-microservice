@@ -43,6 +43,32 @@ public class TypeTool {
      * @param o
      * @return
      */
+    public static boolean isCompatibleType(final Class o) {
+        if (o.equals(JsonObject.class )
+                || o.equals(Byte.class )
+                || o.equals(Character.class )
+                || o.equals(Double.class )
+                || o.equals(Float.class )
+                || o.equals(Integer.class )
+                || o.equals(JsonArray.class )
+                || o.equals(Long.class )
+                || o.equals(Short.class )
+                || o.equals(String.class )
+                || o.equals(byte[].class )
+                || o.equals(Buffer.class )
+                || o.equals(Boolean.class ) ) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Checks if return type is a Vert.x event bus compatible type
+     *
+     * @param o
+     * @return
+     */
     public static boolean isCompatibleRESTReturnType(final Object o) {
         if (o instanceof JsonObject
                 || o instanceof JsonArray
