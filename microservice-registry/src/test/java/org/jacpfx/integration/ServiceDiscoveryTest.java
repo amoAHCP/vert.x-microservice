@@ -76,7 +76,7 @@ public class ServiceDiscoveryTest extends VertxTestBase {
         getVertx().eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(getServiceInfoDesc(
                 TESTSERVICE1)), onSuccess(result -> {
             assertEquals(true, result.body());
-            ServiceDiscovery.getInstance(this.getVertx()).getService(TESTSERVICE1, (serviceResult) -> {
+            ServiceDiscovery.getInstance(this.getVertx()).service(TESTSERVICE1, (serviceResult) -> {
                 assertEquals(true, serviceResult.succeeded());
                 ServiceInfo si = serviceResult.getServiceInfo();
                 assertEquals(true, si.getServiceName().equals(TESTSERVICE1));
@@ -95,12 +95,12 @@ public class ServiceDiscoveryTest extends VertxTestBase {
         getVertx().eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(getServiceInfoDesc(
                 TESTSERVICE1)), onSuccess(result -> {
             assertEquals(true, result.body());
-            ServiceDiscovery.getInstance(this.getVertx()).getService(TESTSERVICE1, (serviceResult) -> {
+            ServiceDiscovery.getInstance(this.getVertx()).service(TESTSERVICE1, (serviceResult) -> {
                 assertEquals(true, serviceResult.succeeded());
                 ServiceInfo si = serviceResult.getServiceInfo();
                 assertEquals(true, si.getServiceName().equals(TESTSERVICE1));
-                si.getOperation("/operation1",opResult->{
-                    assertEquals(true,opResult.succeeded());
+                si.operation("/operation1", opResult -> {
+                    assertEquals(true, opResult.succeeded());
                     assertEquals(true, opResult.getOperation().getName().equals("/operation1"));
                 });
                 testComplete();
@@ -118,7 +118,7 @@ public class ServiceDiscoveryTest extends VertxTestBase {
         getVertx().eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(getServiceInfoDesc(
                 TESTSERVICE1)), onSuccess(result -> {
             assertEquals(true, result.body());
-            ServiceDiscovery.getInstance(this.getVertx()).getService(TESTSERVICE1, (serviceResult) -> {
+            ServiceDiscovery.getInstance(this.getVertx()).service(TESTSERVICE1, (serviceResult) -> {
                 assertEquals(true, serviceResult.succeeded());
                 ServiceInfo si = serviceResult.getServiceInfo();
                 assertEquals(true, si.getServiceName().equals(TESTSERVICE1));

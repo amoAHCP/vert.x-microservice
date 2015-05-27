@@ -60,7 +60,6 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                 if (val <= 1) {
                     // register service at service registry
                     try {
-                        //GlobalKeyHolder.SERVICE_REGISTRY_REGISTER
                         vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(descriptor), handler -> {
                             log.info("Register Service: " + handler.succeeded());
                             startFuture.complete();
@@ -313,7 +312,6 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     private Object[] invokeBinaryEBParameters(Message<byte[]> m, Method method) {
-        // final Object wrapper = getData(m);
         byte[] tmp = m.body();
         final java.lang.reflect.Parameter[] parameters = method.getParameters();
         final Object[] parameterResult = new Object[parameters.length];
@@ -321,7 +319,8 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         int i = 0;
         for (java.lang.reflect.Parameter p : parameters) {
             if (p.getType().equals(EBMessageReply.class)) {
-                parameterResult[i] = new EBMessageReply(this.vertx.eventBus(), m);
+                final String consumesVal = consumes!=null&&consumes.value().length>0?consumes.value()[0]:"";
+                parameterResult[i] = new EBMessageReply(this.vertx.eventBus(), m,consumesVal,getConverter());
             } else {
                 putTypedEBParameter(consumes, parameterResult, p, i, tmp);
             }
@@ -333,14 +332,14 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     private Object[] invokeObjectEBParameters(Message<Object> m, Method method) {
-        // final Object wrapper = getData(m);
         final java.lang.reflect.Parameter[] parameters = method.getParameters();
         final Object[] parameterResult = new Object[parameters.length];
         final Consumes consumes = method.getDeclaredAnnotation(Consumes.class);
         int counter = 0;
         for (java.lang.reflect.Parameter p : parameters) {
             if (p.getType().equals(EBMessageReply.class)) {
-                parameterResult[counter] = new EBMessageReply(this.vertx.eventBus(), m);
+                final String consumesVal = consumes!=null&&consumes.value().length>0?consumes.value()[0]:"";
+                parameterResult[counter] = new EBMessageReply(this.vertx.eventBus(), m,consumesVal,getConverter());
             } else {
                 if (TypeTool.isCompatibleType(p.getType())) {
                     parameterResult[counter] = p.getType().cast(m.body());
@@ -438,17 +437,6 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         return parameters;
     }
 
-    private Parameter<byte[]> getObjectParameter(Message<byte[]> m) {
-        Parameter<byte[]> params = null;
-        try {
-            params = (Parameter<byte[]>) Serializer.deserialize(m.body());
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-        return params;
-    }
 
 
     private Parameter<String> getParameterObject(Message<byte[]> m) {

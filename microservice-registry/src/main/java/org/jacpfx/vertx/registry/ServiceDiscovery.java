@@ -37,7 +37,7 @@ public class ServiceDiscovery {
         return new ServiceDiscovery(null, restURL);
     }
 
-    public ServiceDiscovery getService(String serviceName, Consumer<ServiceInfoResult> consumer) {
+    public ServiceDiscovery service(String serviceName, Consumer<ServiceInfoResult> consumer) {
         if(vertx!=null){
             getServiceInfoByVertx(consumer,(serviceInfo)->serviceInfo.getServiceName().equalsIgnoreCase(serviceName));
         } //TODO add http connection

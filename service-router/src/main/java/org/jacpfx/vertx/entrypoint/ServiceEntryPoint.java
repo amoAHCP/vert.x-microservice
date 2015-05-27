@@ -1,9 +1,6 @@
 package org.jacpfx.vertx.entrypoint;
 
-import io.vertx.core.AbstractVerticle;
-import io.vertx.core.AsyncResultHandler;
-import io.vertx.core.DeploymentOptions;
-import io.vertx.core.Handler;
+import io.vertx.core.*;
 import io.vertx.core.eventbus.EventBus;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpMethod;
@@ -255,5 +252,18 @@ public class ServiceEntryPoint extends AbstractVerticle {
         log.info(value);
     }
 
+    public static void main(String[] args) {
+        VertxOptions vOpts = new VertxOptions();
+        DeploymentOptions options = new DeploymentOptions().setInstances(4);
+        vOpts.setClustered(true);
+        Vertx.clusteredVertx(vOpts, cluster-> {
+            if(cluster.succeeded()){
+                final Vertx result = cluster.result();
+                result.deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint",options, handle -> {
+
+                });
+            }
+        });
+    }
 
 }

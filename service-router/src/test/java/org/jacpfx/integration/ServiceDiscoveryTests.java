@@ -115,11 +115,11 @@ public class ServiceDiscoveryTests extends VertxTestBase {
     public void discoverServiceAndCallWSMethod() throws InterruptedException {
         final String message = "hello";
         final ServiceDiscovery dicovery = ServiceDiscovery.getInstance(this.getVertx());
-        dicovery.getService(SERVICE_REST_GET, (serviceResult) -> {
+        dicovery.service(SERVICE_REST_GET, (serviceResult) -> {
             assertEquals(true, serviceResult.succeeded());
             ServiceInfo si = serviceResult.getServiceInfo();
             assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET));
-            si.getOperation("/wsEndpointOne", operation -> operation.getOperation().websocketConnection(ws -> {
+            si.operation("/wsEndpointOne", operation -> operation.getOperation().websocketConnection(ws -> {
                 System.out.println("websocket: " + ws);
                 ws.handler(data -> {
                     assertNotNull(data.getString(0, data.length()));
@@ -146,11 +146,11 @@ public class ServiceDiscoveryTests extends VertxTestBase {
     public void discoverServiceAndCallTransientWSMethod() throws InterruptedException {
         final String message = "hello";
         final ServiceDiscovery dicovery = ServiceDiscovery.getInstance(this.getVertx());
-        dicovery.getService(SERVICE_REST_GET, (serviceResult) -> {
+        dicovery.service(SERVICE_REST_GET, (serviceResult) -> {
             assertEquals(true, serviceResult.succeeded());
             ServiceInfo si = serviceResult.getServiceInfo();
             assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET));
-            si.getOperation("/wsEndpointTwo",operation -> operation.getOperation().websocketConnection(ws -> {
+            si.operation("/wsEndpointTwo", operation -> operation.getOperation().websocketConnection(ws -> {
                 ws.handler(data -> {
                     assertNotNull(data.getString(0, data.length()));
                     assertTrue(new String(data.getBytes()).equals(message + "-" + "wsServiceTwoTwo" + "-" + "wsEndpointTwo"));
@@ -176,11 +176,11 @@ public class ServiceDiscoveryTests extends VertxTestBase {
     public void discoverServiceAndCallTransientTypedWSMethod() throws InterruptedException {
         final PersonOneX message = new PersonOneX("Andy", "M");
         final ServiceDiscovery dicovery = ServiceDiscovery.getInstance(this.getVertx());
-        dicovery.getService(SERVICE_REST_GET, (serviceResult) -> {
+        dicovery.service(SERVICE_REST_GET, (serviceResult) -> {
             assertEquals(true, serviceResult.succeeded());
             ServiceInfo si = serviceResult.getServiceInfo();
             assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET));
-            si.getOperation("/wsEndpointThree",operation -> operation.getOperation().websocketConnection(ws -> {
+            si.operation("/wsEndpointThree", operation -> operation.getOperation().websocketConnection(ws -> {
                 ws.handler(data -> {
                     assertNotNull(data.getString(0, data.length()));
 
@@ -235,10 +235,10 @@ public class ServiceDiscoveryTests extends VertxTestBase {
         @OperationType(Type.WEBSOCKET)
         public void wsEndpointTwo(String name, WSMessageReply reply) {
             final ServiceDiscovery dicovery = ServiceDiscovery.getInstance(this.getVertx());
-            dicovery.getService(SERVICE_REST_GET2, (serviceResult) -> {
+            dicovery.service(SERVICE_REST_GET2, (serviceResult) -> {
                 if (serviceResult.succeeded()) {
-                    ServiceInfo si =serviceResult.getServiceInfo();
-                    si.getOperation("/wsServiceTwoTwo",operation -> operation.getOperation().websocketConnection(ws -> {
+                    ServiceInfo si = serviceResult.getServiceInfo();
+                    si.operation("/wsServiceTwoTwo", operation -> operation.getOperation().websocketConnection(ws -> {
                         ws.handler(data -> {
                             reply.reply(new String(data.getBytes()) + "-" + "wsEndpointTwo");
                             ws.close();
@@ -256,10 +256,10 @@ public class ServiceDiscoveryTests extends VertxTestBase {
         public void wsEndpointThree(final PersonOne p1, WSMessageReply reply) {
 
             final ServiceDiscovery dicovery = ServiceDiscovery.getInstance(this.getVertx());
-            dicovery.getService(SERVICE_REST_GET2, (serviceResult) -> {
+            dicovery.service(SERVICE_REST_GET2, (serviceResult) -> {
                 if (serviceResult.succeeded()) {
-                    ServiceInfo si =serviceResult.getServiceInfo();
-                    si.getOperation("/wsServiceTwoThree",operation -> operation.getOperation().websocketConnection(ws -> {
+                    ServiceInfo si = serviceResult.getServiceInfo();
+                    si.operation("/wsServiceTwoThree", operation -> operation.getOperation().websocketConnection(ws -> {
                         ws.handler(data -> {
                             reply.reply(new String(data.getBytes()));
                             ws.close();

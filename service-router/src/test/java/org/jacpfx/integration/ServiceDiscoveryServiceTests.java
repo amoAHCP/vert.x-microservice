@@ -112,7 +112,7 @@ public class ServiceDiscoveryServiceTests extends VertxTestBase {
     public void discoverService1() throws InterruptedException {
 
 
-        ServiceDiscovery.getInstance(this.getVertx()).getService(SERVICE_REST_GET, (serviceResult) -> {
+        ServiceDiscovery.getInstance(this.getVertx()).service(SERVICE_REST_GET, (serviceResult) -> {
             assertEquals(true, serviceResult.succeeded());
             ServiceInfo si = serviceResult.getServiceInfo();
             assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET));
@@ -131,11 +131,11 @@ public class ServiceDiscoveryServiceTests extends VertxTestBase {
     public void discoverService1And2() throws InterruptedException {
 
 
-        ServiceDiscovery.getInstance(this.getVertx()).getService(SERVICE_REST_GET, (serviceResult) -> {
+        ServiceDiscovery.getInstance(this.getVertx()).service(SERVICE_REST_GET, (serviceResult) -> {
             assertEquals(true, serviceResult.succeeded());
             ServiceInfo si = serviceResult.getServiceInfo();
             assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET));
-            ServiceDiscovery.getInstance(this.getVertx()).getService(SERVICE_REST_GET2, (serviceResult2) -> {
+            ServiceDiscovery.getInstance(this.getVertx()).service(SERVICE_REST_GET2, (serviceResult2) -> {
                 assertEquals(true, serviceResult2.succeeded());
                 ServiceInfo si2 = serviceResult2.getServiceInfo();
                 assertEquals(true, si2.getServiceName().equals(SERVICE_REST_GET2));
@@ -154,11 +154,11 @@ public class ServiceDiscoveryServiceTests extends VertxTestBase {
     public void discoverService1wsEndpointOne() throws InterruptedException {
 
 
-        ServiceDiscovery.getInstance(this.getVertx()).getService(SERVICE_REST_GET, (serviceResult) -> {
+        ServiceDiscovery.getInstance(this.getVertx()).service(SERVICE_REST_GET, (serviceResult) -> {
             assertEquals(true, serviceResult.succeeded());
             ServiceInfo si = serviceResult.getServiceInfo();
             assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET));
-            si.getOperation("/wsEndpointOne",operationOptional-> {
+            si.operation("/wsEndpointOne", operationOptional -> {
                 assertEquals(true, operationOptional.succeeded());
                 assertEquals(true, operationOptional.getOperation().getName().equalsIgnoreCase("/wsEndpointOne"));
                 assertEquals(true, operationOptional.getOperation().getType().equals(Type.WEBSOCKET.name()));
@@ -178,11 +178,11 @@ public class ServiceDiscoveryServiceTests extends VertxTestBase {
     public void discoverService1wsEndpointOneAndFailOperation() throws InterruptedException {
 
 
-        ServiceDiscovery.getInstance(this.getVertx()).getService(SERVICE_REST_GET, (serviceResult) -> {
+        ServiceDiscovery.getInstance(this.getVertx()).service(SERVICE_REST_GET, (serviceResult) -> {
             assertEquals(true, serviceResult.succeeded());
             ServiceInfo si = serviceResult.getServiceInfo();
             assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET));
-            si.getOperation("/wsEndpointOneXXX",operationOptional-> {
+            si.operation("/wsEndpointOneXXX", operationOptional -> {
                 assertEquals(true, operationOptional.failed());
                 testComplete();
             });
@@ -200,13 +200,13 @@ public class ServiceDiscoveryServiceTests extends VertxTestBase {
     public void discoverService1And2OperationCount() throws InterruptedException {
 
 
-        ServiceDiscovery.getInstance(this.getVertx()).getService(SERVICE_REST_GET, (serviceResult) -> {
+        ServiceDiscovery.getInstance(this.getVertx()).service(SERVICE_REST_GET, (serviceResult) -> {
             assertEquals(true, serviceResult.succeeded());
-            ServiceInfo si= serviceResult.getServiceInfo();
+            ServiceInfo si = serviceResult.getServiceInfo();
             assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET));
             assertEquals(true, si.getOperationsByType(Type.WEBSOCKET).collect(Collectors.toList()).size() == 2);
             assertEquals(true, si.getOperationsByType(Type.REST_GET).collect(Collectors.toList()).size() == 1);
-            ServiceDiscovery.getInstance(this.getVertx()).getService(SERVICE_REST_GET2, (serviceResult2) -> {
+            ServiceDiscovery.getInstance(this.getVertx()).service(SERVICE_REST_GET2, (serviceResult2) -> {
                 assertEquals(true, serviceResult2.succeeded());
                 ServiceInfo si2 = serviceResult2.getServiceInfo();
                 assertEquals(true, si2.getServiceName().equals(SERVICE_REST_GET2));

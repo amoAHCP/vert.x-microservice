@@ -166,6 +166,9 @@ public class EventBusServicesTest extends VertxTestBase {
 
 
         getVertx().eventBus().send(SERVICE_REST_GET.concat("/testComplexJson"), new Gson().toJson(new PersonOne("AAA", "BBBB")), messageAsyncResult -> {
+            assertTrue(messageAsyncResult.succeeded());
+            String val = String.valueOf(messageAsyncResult.result().body());
+            assertTrue(val.equals("AAA"));
             testComplete();
         });
 
@@ -228,7 +231,7 @@ public class EventBusServicesTest extends VertxTestBase {
         @Consumes("application/octet-stream")
         public void testSimpleMessage2(String name, EBMessageReply reply) {
             System.out.println(name);
-            reply.reply("ass".getBytes());
+            reply.reply("ass");
         }
 
         @Path("/testComplexJson")
@@ -236,20 +239,14 @@ public class EventBusServicesTest extends VertxTestBase {
         @Consumes("application/json")
         public void testComplexJson(PersonOneX p1, EBMessageReply reply) {
             System.out.println(p1.getName());
-            reply.reply(p1.getName().getBytes());
+            reply.reply(p1.getName());
         }
         @Path("/testComplexBinary")
         @OperationType(Type.EVENTBUS)
         @Consumes("application/octet-stream")
         public void testComplexBinary(PersonOne p1, EBMessageReply reply) {
             System.out.println("testComplexBinary: "+p1.getName());
-            byte[] tmp = new byte[0];
-            try {
-                tmp = Serializer.serialize(new PersonOne("AAA", "BBBB"));
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-            reply.reply(tmp);
+            reply.reply(new PersonOne("AAA", "BBBB"));
         }
 
     }

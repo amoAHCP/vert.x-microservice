@@ -94,7 +94,7 @@ public class ServiceInfo implements Serializable {
         return Stream.of(operations).filter(op -> op.getName().equalsIgnoreCase(name));
     }
 
-    public ServiceInfo getOperation(final String name, Consumer<OperationResult> consumer) {
+    public ServiceInfo operation(final String name, Consumer<OperationResult> consumer) {
         final Optional<Operation> first = Stream.of(operations).filter(op -> op.getName().equalsIgnoreCase(name)).findFirst();
         if(first.isPresent()){
              consumer.accept(new OperationResult(first.get(),true,null));
