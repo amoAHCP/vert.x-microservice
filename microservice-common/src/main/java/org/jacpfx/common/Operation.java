@@ -1,13 +1,16 @@
 package org.jacpfx.common;
 
+import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
+import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.*;
 
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 /**
  * // IDEA... create Optional like compleatablefuture Optional.executeAsync().andThan().get();
@@ -108,8 +111,21 @@ public class Operation implements Serializable{
         return serviceName;
     }
 
+
+    public boolean isEventBus() {
+      return type.equalsIgnoreCase(Type.EVENTBUS.name());
+    }
+
+    public boolean isWebSocket() {
+        return type.equalsIgnoreCase(Type.WEBSOCKET.name());
+    }
+
+    public boolean isREST_GET() {
+        return type.equalsIgnoreCase(Type.REST_GET.name());
+    }
+
+
     /**
-     * TODO: not sure if this must be synchronized... in theory not because the ServiceDiscoveryHandler returns always new instances
      * Returns a http client connected to the router
      * @return
      */
@@ -153,6 +169,16 @@ public class Operation implements Serializable{
         getHttpClient().ifPresent(httpClient -> httpClient.websocket(connectionPort,connectionHost,serviceName.concat(name),wsConnect));
         return new Operation(name,description,url,type,produces,consumes,vertx,parameter);
     }
+
+
+    public Operation eventBusSend(final Object message, Consumer<AsyncResult<Message<Object>>>...consumer){
+        getVertx().eventBus().send(serviceName.concat(name),message,handler -> {
+                Stream.of(consumer).forEach(c->c.accept(handler));
+        });
+        return new Operation(name,description,url,type,produces,consumes,vertx,parameter);
+    }
+
+
 
     @Override
     public boolean equals(Object o) {

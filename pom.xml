@@ -38,7 +38,7 @@
 
 
         <!--Dependency versions-->
-        <vertx.version>3.0.0-milestone5</vertx.version>
+        <vertx.version>3.0.0-milestone6</vertx.version>
 
         <junit.version>4.11</junit.version>
 
@@ -96,6 +96,14 @@
             <artifactId>vertx-core</artifactId>
             <version>${vertx.version}</version>
         </dependency>
+        <dependency>
+            <groupId>io.vertx</groupId>
+            <artifactId>vertx-dropwizard-metrics</artifactId>
+            <version>${vertx.version}</version>
+        </dependency>
+
+
+
 
         <dependency>
             <groupId>com.google.code.gson</groupId>

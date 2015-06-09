@@ -42,8 +42,8 @@ public class ServiceRegistry extends AbstractVerticle {
     private static final long DEFAULT_TIMEOUT = 50000;
     private static final long DEFAULT_PING_TIME = 10000;
     private static final long DEFAULT_SWEEP_TIME = 0;
-    public static final String HOST = getHostName();
-    public static final int PORT = 8080;
+    private static final String HOST = getHostName();
+    private static final int PORT = 8080;
     private static final String prefixWS = "ws://";
     private static final String prefixHTTP = "http://";
 
@@ -56,9 +56,10 @@ public class ServiceRegistry extends AbstractVerticle {
     private String serviceUnRegisterPath;
     private String host;
     private int port;
+    private boolean debug;
     private final ServiceInfoDecoder serviceInfoDecoder = new ServiceInfoDecoder();
 
-    public static String getHostName() {
+    private static String getHostName() {
         try {
             return InetAddress.getLocalHost().getHostName();
         } catch (UnknownHostException e) {
@@ -66,9 +67,10 @@ public class ServiceRegistry extends AbstractVerticle {
             return "127.0.0.1";
         }
     }
+
     @Override
     public void start(Future<Void> startFuture) {
-        log.info("Service registry started.");
+        logDebug("Service registry started.");
 
         initConfiguration(getConfig());
         vertx.eventBus().registerDefaultCodec(ServiceInfo.class, serviceInfoDecoder);
@@ -88,11 +90,12 @@ public class ServiceRegistry extends AbstractVerticle {
         host = config.getString("host", HOST);
         port = config.getInteger("port", PORT);
         mainURL = host.concat(":").concat(Integer.valueOf(port).toString());
+        debug = config.getBoolean("debug",false);
 
     }
 
     private void getServicesInfo(Message<byte[]> message) {
-        log.info("service info: " + message.body());
+        logDebug("service info: " + message.body());
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap(GlobalKeyHolder.REGISTRY_MAP_KEY, onSuccess(resultMap ->
                         getServiceHolderAndReplyToServiceInfoRequest(message, resultMap)
         ));
@@ -101,8 +104,7 @@ public class ServiceRegistry extends AbstractVerticle {
     private void getServiceHolderAndReplyToServiceInfoRequest(Message<byte[]> message, AsyncMap<String, ServiceInfoHolder> resultMap) {
         resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(resultHolder -> {
             if (resultHolder != null) {
-                final ServiceInfoHolder serviceInfoHolder = buildServiceInfoForEntryPoint(resultHolder);
-                message.reply(getServiceIfoHolderBinary(serviceInfoHolder));
+                message.reply(getServiceIfoHolderBinary(buildServiceInfoForEntryPoint(resultHolder)));
             } else {
                 message.reply(getServiceIfoHolderBinary(new ServiceInfoHolder()));
             }
@@ -118,14 +120,14 @@ public class ServiceRegistry extends AbstractVerticle {
         return new byte[]{};
     }
 
-    protected <T> Handler<AsyncResult<T>> onSuccess(Consumer<T> consumer) {
+    private <T> Handler<AsyncResult<T>> onSuccess(Consumer<T> consumer) {
         return result -> {
             if (result.failed()) {
-                log.info("failed: " + result.cause());
+                logDebug("failed: " + result.cause());
                 result.cause().printStackTrace();
 
             } else {
-                log.info("ok : " + result.result());
+                logDebug("ok : " + result.result());
                 consumer.accept(result.result());
             }
         };
@@ -135,18 +137,16 @@ public class ServiceRegistry extends AbstractVerticle {
     private void serviceRegister(final Message<byte[]> message) {
         final ServiceInfo info = deserializeServiceInfo(message);
         info.setLastConnection(getDateStamp());
-        log.info("Register: " + message.body());
-        this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap(GlobalKeyHolder.REGISTRY_MAP_KEY, onSuccess(resultMap -> {
-                    getServiceHolderAndRegister(message, info, resultMap);
-                }
+        logDebug("Register: " + message.body());
+        this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap(GlobalKeyHolder.REGISTRY_MAP_KEY, onSuccess(resultMap -> getServiceHolderAndRegister(message, info, resultMap)
         ));
 
     }
 
     private void getServiceHolderAndRegister(Message<byte[]> message, ServiceInfo info, AsyncMap<String, ServiceInfoHolder> resultMap) {
-        log.info("got map");
+        logDebug("got map");
         resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(resultHolder -> {
-            log.info("got result holder");
+            logDebug("got result holder");
             if (resultHolder != null) {
                 addServiceEntry(resultMap, info, resultHolder, message);
             } else {
@@ -158,9 +158,7 @@ public class ServiceRegistry extends AbstractVerticle {
     private ServiceInfo deserializeServiceInfo(final Message<byte[]> message) {
         try {
             return (ServiceInfo) Serializer.deserialize(message.body());
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
         return null;
@@ -168,21 +166,21 @@ public class ServiceRegistry extends AbstractVerticle {
 
     private void addServiceEntry(final AsyncMap resultMap, final ServiceInfo info, final ServiceInfoHolder holder, final Message<byte[]> message) {
         holder.add(info);
-        log.info("update result holder");
+        logDebug("update result holder");
         resultMap.replace(GlobalKeyHolder.SERVICE_HOLDER, holder, onSuccess(s -> {
             publishToEntryPoint(info);
             message.reply(true);
-            log.info("Register REPLACE: " + info);
+            logDebug("Register REPLACE: " + info);
         }));
     }
 
     private void createNewEntry(final AsyncMap resultMap, final ServiceInfo info, final ServiceInfoHolder holder, final Message<byte[]> message) {
         holder.add(info);
-        log.info("add result holder");
+        logDebug("add result holder");
         resultMap.put(GlobalKeyHolder.SERVICE_HOLDER, holder, onSuccess(s -> {
             publishToEntryPoint(info);
             message.reply(true);
-            log.info("Register ADD: " + info);
+            logDebug("Register ADD: " + info);
         }));
     }
 
@@ -193,10 +191,10 @@ public class ServiceRegistry extends AbstractVerticle {
 
     private void pingService() {
         vertx.sharedData().getCounter("registry-timer-counter", onSuccess(counter -> counter.incrementAndGet(onSuccess(val -> {
-            log.info("registry-timer-counter: " + val);
+            logDebug("registry-timer-counter: " + val);
             if (val <= 1) {
                 vertx.setPeriodic(ping_time, timerID -> {
-                    log.info("ping_time: " + timerID);
+                    logDebug("ping_time: " + timerID);
                     getSharedRegistryAndPing();
                 });
             }
@@ -207,7 +205,7 @@ public class ServiceRegistry extends AbstractVerticle {
     private void getSharedRegistryAndPing() {
         final SharedData sharedData = this.vertx.sharedData();
         sharedData.<String, ServiceInfoHolder>getClusterWideMap(GlobalKeyHolder.REGISTRY_MAP_KEY, onSuccess(resultMap -> {
-                    log.info("resultMap " + resultMap);
+                    logDebug("resultMap " + resultMap);
                     getServiceHolderAndPingServices(resultMap);
                 }
         ));
@@ -215,7 +213,7 @@ public class ServiceRegistry extends AbstractVerticle {
 
     private void getServiceHolderAndPingServices(AsyncMap<String, ServiceInfoHolder> resultMap) {
         resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(holder -> {
-            log.info("get Holder " + holder + " this:" + this);
+            logDebug("get Holder " + holder + " this:" + this);
             if (holder != null) {
                 final List<ServiceInfo> serviceHolders = holder.getAll();
                 serviceHolders.forEach(this::pingService);
@@ -232,18 +230,16 @@ public class ServiceRegistry extends AbstractVerticle {
                 serviceName + "-info",
                 "ping",
                 new DeliveryOptions().setSendTimeout(timeout_time),
-                (Handler<AsyncResult<Message<JsonObject>>>) event -> {
-                    handlePingResult(info, serviceName, event);
-                });
+                (Handler<AsyncResult<Message<JsonObject>>>) event -> handlePingResult(info, serviceName, event));
     }
 
     private void handlePingResult(ServiceInfo info, String serviceName, AsyncResult<Message<JsonObject>> event) {
         if (event.succeeded()) {
             info.setLastConnection(getDateStamp());
             updateServiceInfo(info);
-            log.info("ping: " + serviceName);
+            logDebug("ping: " + serviceName);
         } else {
-            log.info("ping error: " + serviceName);
+            logDebug("ping error: " + serviceName);
             unregisterServiceAtRouter(info);
         }
     }
@@ -251,9 +247,9 @@ public class ServiceRegistry extends AbstractVerticle {
     private void updateServiceInfo(final ServiceInfo info) {
         this.vertx.sharedData().<String, ServiceInfoHolder>getClusterWideMap(GlobalKeyHolder.REGISTRY_MAP_KEY, onSuccess(resultMap ->
                         resultMap.get(GlobalKeyHolder.SERVICE_HOLDER, onSuccess(holder -> {
-                            log.info("register service info " + info);
+                            logDebug("register service info " + info);
                             holder.replace(info);
-                            resultMap.replace(GlobalKeyHolder.SERVICE_HOLDER, holder, onSuccess(s -> log.info("update services: ")));
+                            resultMap.replace(GlobalKeyHolder.SERVICE_HOLDER, holder, onSuccess(s ->logDebug("update services: ")));
                         }))
         ));
 
@@ -281,11 +277,9 @@ public class ServiceRegistry extends AbstractVerticle {
     }
 
     private void resetServiceCounterAndPublish(ServiceInfo info) {
-        vertx.sharedData().getCounter(info.getServiceName(), onSuccess(counter -> counter.get(onSuccess(c -> {
-            counter.compareAndSet(c, 0, onSuccess(val ->
-                            vertx.eventBus().publish(serviceUnRegisterPath, info)
-            ));
-        }))));
+        vertx.sharedData().getCounter(info.getServiceName(), onSuccess(counter -> counter.get(onSuccess(c -> counter.compareAndSet(c, 0, onSuccess(val ->
+                        vertx.eventBus().publish(serviceUnRegisterPath, info)
+        ))))));
     }
 
     private JsonObject getConfig() {
@@ -300,23 +294,25 @@ public class ServiceRegistry extends AbstractVerticle {
     }
 
     private ServiceInfoHolder buildServiceInfoForEntryPoint(ServiceInfoHolder message) {
-        return new ServiceInfoHolder(message.getAll().stream().
-                map(info->updateOperationUrl(prefixWS, prefixHTTP, mainURL, info, mainURL.concat(info.getServiceName()), host, port)).
+        final String wsMainURL = prefixWS.concat(mainURL);
+        final String httpMainURL = prefixHTTP.concat(mainURL);
+        return new ServiceInfoHolder(message.getAll().parallelStream().
+                map(info -> updateOperationUrl(wsMainURL, httpMainURL, info, mainURL.concat(info.getServiceName()), host, port)).
                 collect(Collectors.toList()));
     }
 
 
-    private ServiceInfo updateOperationUrl(String prefixWS, String prefixHTTP, String mainURL, ServiceInfo infoObj, String serviceURL, String host, int port) {
+    private ServiceInfo updateOperationUrl(String wsMainURL, String httpMainURL, ServiceInfo infoObj, String serviceURL, String host, int port) {
         final List<Operation> mappedOperations = Stream.of(infoObj.getOperations()).map(operation -> {
             final String url = operation.getUrl();
             final Type type = Type.valueOf(operation.getType());
             switch (type) {
                 case EVENTBUS:
-                    return null;
+                    return createOperation(infoObj.getServiceName(), host, 0, operation, url);
                 case WEBSOCKET:
-                    return createOperation(infoObj.getServiceName(), prefixWS, mainURL, host, port, operation, url);
+                    return createOperation(infoObj.getServiceName(), host, port, operation, wsMainURL.concat(url));
                 default:
-                    return createOperation(infoObj.getServiceName(), prefixHTTP, mainURL, host, port, operation, url);
+                    return createOperation(infoObj.getServiceName(), host, port, operation, httpMainURL.concat(url));
 
             }
         }).collect(Collectors.toList());
@@ -324,10 +320,10 @@ public class ServiceRegistry extends AbstractVerticle {
         return infoObj.buildFromServiceInfo(serviceURL, mappedOperations.toArray(new Operation[mappedOperations.size()]));
     }
 
-    private Operation createOperation(String serviceName, String prefix, String mainURL, String host, int port, Operation operation, String url) {
+    private Operation createOperation(String serviceName, String host, int port, Operation operation, String url) {
         return new Operation(operation.getName(),
                 operation.getDescription(),
-                prefix.concat(mainURL).concat(url),
+                url,
                 operation.getType(),
                 operation.getProduces(),
                 operation.getConsumes(),
@@ -336,6 +332,12 @@ public class ServiceRegistry extends AbstractVerticle {
                 port,
                 null,// transient Vertx instance will be set on client side
                 operation.getParameter());
+    }
+
+    private void logDebug(String message){
+        if(debug) {
+           log.debug(message);
+        }
     }
 
 

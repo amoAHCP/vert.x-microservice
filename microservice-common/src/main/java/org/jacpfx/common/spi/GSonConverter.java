@@ -14,6 +14,6 @@ public class GSonConverter implements JSONConverter {
 
     @Override
     public String convertToJSONString(Object object) {
-        return null;
+        return gson.toJson(object);
     }
 }

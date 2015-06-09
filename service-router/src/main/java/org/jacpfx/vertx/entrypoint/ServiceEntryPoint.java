@@ -9,6 +9,8 @@ import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.impl.LoggerFactory;
+import io.vertx.ext.dropwizard.DropwizardMetricsOptions;
+import io.vertx.ext.dropwizard.MetricsService;
 import org.jacpfx.common.*;
 import org.jacpfx.vertx.handler.RESTHandler;
 import org.jacpfx.vertx.handler.WSClusterHandler;
@@ -17,8 +19,6 @@ import org.jacpfx.vertx.util.CustomRouteMatcher;
 import org.jacpfx.vertx.util.WebSocketRepository;
 
 import java.io.IOException;
-import java.net.InetAddress;
-import java.net.UnknownHostException;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -29,14 +29,14 @@ import java.util.stream.Stream;
  */
 public class ServiceEntryPoint extends AbstractVerticle {
 
-    public static final String HOST = getHostName();
-    public static final int PORT = 8080;
+    private static final String HOST = getHostName();
+    private static final int PORT = 8080;
     public static final int DEFAULT_SERVICE_TIMEOUT = 10000;
-    public static final String SERVICE_REGISTRY = "org.jacpfx.vertx.registry.ServiceRegistry";
+    private static final String SERVICE_REGISTRY = "org.jacpfx.vertx.registry.ServiceRegistry";
     private static final String SERVICE_INFO_PATH = "/serviceInfo";
     private static final Logger log = LoggerFactory.getLogger(ServiceEntryPoint.class);
-    public static final String WS_REPLY = "ws.reply";
-    public static final String WS_REPLY_TO_ALL = "ws.replyToAll";
+    private static final String WS_REPLY = "ws.reply";
+    private static final String WS_REPLY_TO_ALL = "ws.replyToAll";
 
 
 
@@ -57,16 +57,12 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private int port;
     private String mainURL;
     private boolean clustered;
+    private boolean debug;
 
     private int defaultServiceTimeout;
 
-    public static String getHostName() {
-        try {
-            return InetAddress.getLocalHost().getHostName();
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-            return "127.0.0.1";
-        }
+    private static String getHostName() {
+        return "0.0.0.0";
     }
 
 
@@ -87,16 +83,21 @@ public class ServiceEntryPoint extends AbstractVerticle {
         //  vertx.eventBus().registerDefaultCodec(Parameter.class, parameterDecoder);
 
 
-        vertx.eventBus().consumer(wsReplyPath, (Handler<Message<byte[]>>) message -> wsHandler.replyToWSCaller(message));
-        vertx.eventBus().consumer(wsReplyToAllPath, (Handler<Message<byte[]>>) message -> wsHandler.replyToAllWS(message));
+        vertx.eventBus().consumer(wsReplyPath, (Handler<Message<byte[]>>) wsHandler::replyToWSCaller);
+        vertx.eventBus().consumer(wsReplyToAllPath, (Handler<Message<byte[]>>) wsHandler::replyToAllWS);
         vertx.eventBus().consumer(serviceRegisterPath, this::serviceRegisterHandler);
         vertx.eventBus().consumer(serviceUnRegisterPath, this::serviceUnRegisterHandler);
-        DeploymentOptions options = new DeploymentOptions().setWorker(false).setConfig(vertx.getOrCreateContext().config().put("cluster", true));
-        vertx.deployVerticle(serviceRegistry, options);
+
+        deployRegistry();
 
         initHTTPConnector();
 
         startFuture.complete();
+    }
+
+    private void deployRegistry() {
+        DeploymentOptions options = new DeploymentOptions().setWorker(false).setConfig(vertx.getOrCreateContext().config().put("cluster", true));
+        vertx.deployVerticle(serviceRegistry, options);
     }
 
 
@@ -112,6 +113,12 @@ public class ServiceEntryPoint extends AbstractVerticle {
             request.response().putHeader("content-type", "text/json");
             request.response().end(serviceInfo.encodePrettily());
         })));
+        routeMatcher.matchMethod(HttpMethod.GET,"/metrics",req -> {
+            MetricsService metricsService = MetricsService.create(vertx);
+            JsonObject metrics = metricsService.getMetricsSnapshot(vertx);
+            req.response().putHeader("content-type", "text/json");
+            req.response().end(metrics.encodePrettily());
+        }) ;
         routeMatcher.noMatch(handler -> handler.response().end("no route found"));
         server.requestHandler(routeMatcher::accept).listen(res -> {
 
@@ -132,6 +139,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
         port = config.getInteger("port", PORT);
         defaultServiceTimeout = config.getInteger("defaultServiceTimeout", DEFAULT_SERVICE_TIMEOUT);
         mainURL = host.concat(":").concat(Integer.valueOf(port).toString());
+        debug = config.getBoolean("debug",false);
     }
 
     /**
@@ -201,12 +209,10 @@ public class ServiceEntryPoint extends AbstractVerticle {
                     ServiceInfoHolder holder = null;
                     try {
                         holder = (ServiceInfoHolder) Serializer.deserialize(infoBytes);
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    } catch (ClassNotFoundException e) {
+                    } catch (IOException | ClassNotFoundException e) {
                         e.printStackTrace();
                     }
-                    request.accept(holder.getServiceInfo());
+                    if(holder!=null)request.accept(holder.getServiceInfo());
 
                 }
 
@@ -222,7 +228,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
                 // TODO implement serviceInfo request
                 return;
             }
-            System.out.println("connect socket to path: " + serverSocket.path());
+            logDebug("connect socket to path: " + serverSocket.path());
             serverSocket.pause();
             serverSocket.exceptionHandler(ex -> {
                 //TODO
@@ -256,6 +262,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
         VertxOptions vOpts = new VertxOptions();
         DeploymentOptions options = new DeploymentOptions().setInstances(4);
         vOpts.setClustered(true);
+        vOpts.setMetricsOptions(new DropwizardMetricsOptions().setEnabled(true));
         Vertx.clusteredVertx(vOpts, cluster-> {
             if(cluster.succeeded()){
                 final Vertx result = cluster.result();
@@ -264,6 +271,12 @@ public class ServiceEntryPoint extends AbstractVerticle {
                 });
             }
         });
+    }
+
+    private void logDebug(String message){
+        if(debug) {
+            log.debug(message);
+        }
     }
 
 }

@@ -54,31 +54,28 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     private void registerService(final Future<Void> startFuture) {
-        vertx.sharedData().getCounter(serviceName(), onSuccess(counter -> {
-            counter.incrementAndGet(onSuccess(val -> {
-                log.info(val);
-                if (val <= 1) {
-                    // register service at service registry
-                    try {
-                        vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(descriptor), handler -> {
-                            log.info("Register Service: " + handler.succeeded());
-                            startFuture.complete();
-                        });
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                } else {
-                    startFuture.complete();
+        vertx.sharedData().getCounter(serviceName(), onSuccess(counter -> counter.incrementAndGet(onSuccess(val -> {
+            if (val <= 1) {
+                // register service at service registry
+                try {
+                    vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(descriptor), handler -> {
+                        log.info("Register Service: " + handler.succeeded());
+                        startFuture.complete();
+                    });
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
-            }));
-        }));
+            } else {
+                startFuture.complete();
+            }
+        }))));
     }
 
     private ServiceInfo createInfoObject(List<Operation> operations) {
         return new ServiceInfo(serviceName(), null, getHostName(), null, null, operations.toArray(new Operation[operations.size()]));
     }
 
-    public String getHostName() {
+    private String getHostName() {
         try {
             return InetAddress.getLocalHost().getHostName();
         } catch (UnknownHostException e) {
@@ -105,9 +102,9 @@ public abstract class ServiceVerticle extends AbstractVerticle {
      * @return a list of all operation in service
      */
     private List<Operation> getAllOperationsInService(final Method[] allMethods) {
-        return Stream.of(allMethods).
+        return Stream.of(allMethods).parallel().
                 filter(m -> m.isAnnotationPresent(Path.class)).
-                map(method -> mapServiceMethod(method)).collect(Collectors.toList());
+                map(this::mapServiceMethod).collect(Collectors.toList());
     }
 
     private Operation mapServiceMethod(Method method) {
@@ -149,20 +146,19 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     private void registerEventBusMethod(Method method, Consumes consumes, String url, List<String> parameter) {
         Class<?> clazzParameter = null;
         try {
-            clazzParameter = parameter.isEmpty()?null:Class.forName(parameter.get(0));
+            clazzParameter = parameter.isEmpty() ? null : Class.forName(parameter.get(0));
         } catch (ClassNotFoundException e) {
             e.printStackTrace();
         }
 
         if (isBinary(consumes)) {
-            vertx.eventBus().consumer(url, (Handler<Message<byte[]>>) handler -> binaryEBHandler(handler,method));
-        } else if(isJSON(consumes)) {
-            vertx.eventBus().consumer(url, handler -> objectEBHandler(handler,method));
-        } else if (clazzParameter!=null && TypeTool.isCompatibleType(clazzParameter)) {
-            vertx.eventBus().consumer(url, handler -> objectEBHandler(handler,method));
+            vertx.eventBus().consumer(url, (Handler<Message<byte[]>>) handler -> binaryEBHandler(handler, method));
+        } else if (isJSON(consumes)) {
+            vertx.eventBus().consumer(url, handler -> objectEBHandler(handler, method));
+        } else if (clazzParameter != null && TypeTool.isCompatibleType(clazzParameter)) {
+            vertx.eventBus().consumer(url, handler -> objectEBHandler(handler, method));
         }
     }
-
 
 
     /**
@@ -189,7 +185,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         final Class<?>[] parameterTypes = method.getParameterTypes();
         final List<Class> classes = Stream.of(parameterTypes).filter(c -> !c.equals(EBMessageReply.class)).collect(Collectors.toList());
         if (classes.size() > 1) throw new IllegalArgumentException("only one parameter is allowed");
-        return classes.stream().map(c -> c.getName()).collect(Collectors.toList());
+        return classes.stream().map(Class::getName).collect(Collectors.toList());
     }
 
     /**
@@ -203,7 +199,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         // TODO, instead of returning the class names of the parameter return a json representation if methods @Consumes annotation defines application/json. Be aware of String, Integer....
         final List<Class> classes = Stream.of(parameterTypes).filter(c -> !c.equals(WSMessageReply.class)).collect(Collectors.toList());
         if (classes.size() > 1) throw new IllegalArgumentException("only one parameter is allowed");
-        return classes.stream().map(c -> c.getName()).collect(Collectors.toList());
+        return classes.stream().map(Class::getName).collect(Collectors.toList());
     }
 
     /**
@@ -288,19 +284,19 @@ public abstract class ServiceVerticle extends AbstractVerticle {
      * @param method
      */
     private void genericWSHandler(Message<byte[]> handler, Method method) {
-        genericVoidMethodInvocation(handler,method,()-> invokeWSParameters(handler, method));
+        genericVoidMethodInvocation(handler, method, () -> invokeWSParameters(handler, method));
     }
 
-    private void objectEBHandler(Message<Object> handler,Method method) {
-        genericVoidMethodInvocation(handler,method,()-> invokeObjectEBParameters(handler, method));
+    private void objectEBHandler(Message<Object> handler, Method method) {
+        genericVoidMethodInvocation(handler, method, () -> invokeObjectEBParameters(handler, method));
 
     }
 
-    private void binaryEBHandler(Message<byte[]> handler,Method method) {
-        genericVoidMethodInvocation(handler,method,()->invokeBinaryEBParameters(handler, method));
+    private void binaryEBHandler(Message<byte[]> handler, Method method) {
+        genericVoidMethodInvocation(handler, method, () -> invokeBinaryEBParameters(handler, method));
     }
 
-    private void genericVoidMethodInvocation(Message handler,Method method, Supplier<Object[]> supplier) {
+    private void genericVoidMethodInvocation(Message handler, Method method, Supplier<Object[]> supplier) {
         try {
             method.invoke(this, supplier.get());
         } catch (IllegalAccessException e) {
@@ -319,8 +315,8 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         int i = 0;
         for (java.lang.reflect.Parameter p : parameters) {
             if (p.getType().equals(EBMessageReply.class)) {
-                final String consumesVal = consumes!=null&&consumes.value().length>0?consumes.value()[0]:"";
-                parameterResult[i] = new EBMessageReply(this.vertx.eventBus(), m,consumesVal,getConverter());
+                final String consumesVal = consumes != null && consumes.value().length > 0 ? consumes.value()[0] : "";
+                parameterResult[i] = new EBMessageReply(this.vertx.eventBus(), m, consumesVal, getConverter());
             } else {
                 putTypedEBParameter(consumes, parameterResult, p, i, tmp);
             }
@@ -338,8 +334,8 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         int counter = 0;
         for (java.lang.reflect.Parameter p : parameters) {
             if (p.getType().equals(EBMessageReply.class)) {
-                final String consumesVal = consumes!=null&&consumes.value().length>0?consumes.value()[0]:"";
-                parameterResult[counter] = new EBMessageReply(this.vertx.eventBus(), m,consumesVal,getConverter());
+                final String consumesVal = consumes != null && consumes.value().length > 0 ? consumes.value()[0] : "";
+                parameterResult[counter] = new EBMessageReply(this.vertx.eventBus(), m, consumesVal, getConverter());
             } else {
                 if (TypeTool.isCompatibleType(p.getType())) {
                     parameterResult[counter] = p.getType().cast(m.body());
@@ -373,26 +369,12 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         return parameterResult;
     }
 
-    private Object getData(Message<byte[]> m) {
-        Object data = null;
-        try {
-            data = Serializer.deserialize(m.body());
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
-        }
-
-        return data;
-    }
 
     private WSDataWrapper getWSDataWrapper(Message<byte[]> m) {
         WSDataWrapper wrapper = null;
         try {
             wrapper = (WSDataWrapper) Serializer.deserialize(m.body());
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
 
@@ -436,7 +418,6 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         }
         return parameters;
     }
-
 
 
     private Parameter<String> getParameterObject(Message<byte[]> m) {
@@ -484,9 +465,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                     handleBinaryWSParameter(parameterResult, p, counter, myParameter);
                 }
 
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (ClassNotFoundException e) {
+            } catch (IOException | ClassNotFoundException e) {
                 e.printStackTrace();
             }
         }
@@ -509,9 +488,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                     handleBinaryWSParameter(parameterResult, p, counter, myParameter);
                 }
 
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (ClassNotFoundException e) {
+            } catch (IOException | ClassNotFoundException e) {
                 e.printStackTrace();
             }
         }
@@ -541,15 +518,13 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     private boolean isBinary(final Consumes consumes) {
         if (consumes == null || consumes.value().length == 0) return false;
         Optional<String> result = Stream.of(consumes.value()).filter(val -> val.equalsIgnoreCase("application/octet-stream")).findFirst();
-        if (result.isPresent()) return true;
-        return false;
+        return result.isPresent();
     }
 
     private boolean isJSON(final Consumes consumes) {
         if (consumes == null || consumes.value().length == 0) return false;
         Optional<String> result = Stream.of(consumes.value()).filter(val -> val.equalsIgnoreCase("application/json")).findFirst();
-        if (result.isPresent()) return true;
-        return false;
+        return result.isPresent();
     }
 
 
@@ -557,8 +532,6 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
         try {
             m.reply(Serializer.serialize(getServiceDescriptor()), new DeliveryOptions().setSendTimeout(10000));
-        } catch (IOException e) {
-            e.printStackTrace();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -588,4 +561,5 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     protected String getVersion() {
         return null;
     }
+
 }

@@ -10,10 +10,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
-import org.jacpfx.common.WSMessageReply;
-import org.jacpfx.common.OperationType;
-import org.jacpfx.common.ServiceInfo;
-import org.jacpfx.common.Type;
+import org.jacpfx.common.*;
 import org.jacpfx.entities.PersonOne;
 import org.jacpfx.entities.PersonOneX;
 import org.jacpfx.vertx.registry.ServiceDiscovery;
@@ -201,6 +198,36 @@ public class ServiceDiscoveryTests extends VertxTestBase {
         await();
     }
 
+    @Test
+    /**
+     * calls a WS servicesA which uses discovery to get data from ServiceB
+     */
+
+    public void discoverServiceEventbus() throws InterruptedException {
+        final PersonOneX message = new PersonOneX("Andy", "M");
+        final ServiceDiscovery dicovery = ServiceDiscovery.getInstance(this.getVertx());
+        dicovery.service(SERVICE_REST_GET2, (serviceResult) -> {
+            assertEquals(true, serviceResult.succeeded());
+            ServiceInfo si = serviceResult.getServiceInfo();
+            assertEquals(true, si.getServiceName().equals(SERVICE_REST_GET2));
+            si.operation("/wsEndpointFive", operation -> {
+                assertTrue(operation.succeeded());
+                assertTrue(operation.getOperation().isEventBus());
+                Gson gg = new Gson();
+                operation.getOperation().eventBusSend(gg.toJson(message), (reply) -> {
+                    assertTrue(reply.succeeded());
+                    PersonOneX rm = gg.fromJson(String.valueOf(reply.result().body()), PersonOneX.class);
+                    assertTrue(rm.getName().equals(message.getName() + "wsEndpointFive"));
+                    testComplete();
+                });
+            });
+
+        });
+
+
+        await();
+    }
+
     public void discoverServiceFailOfNonExtistingService() {
 
     }
@@ -304,6 +331,15 @@ public class ServiceDiscoveryTests extends VertxTestBase {
         public void wsEndpointFour(PersonOneX p2, WSMessageReply reply) {
 
 
+            System.out.println("wsServiceTwoFour-2: " + name + "   :::" + this);
+        }
+
+        @Path("/wsEndpointFive")
+        @OperationType(Type.EVENTBUS)
+        @Consumes("application/json")
+        public void wsEndpointFive(PersonOneX p2, EBMessageReply reply) {
+
+            reply.reply(new PersonOne(p2.getName() + "wsEndpointFive", p2.getLastname()));
             System.out.println("wsServiceTwoFour-2: " + name + "   :::" + this);
         }
 

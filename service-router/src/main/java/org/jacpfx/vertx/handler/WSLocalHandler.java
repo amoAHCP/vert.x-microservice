@@ -11,10 +11,10 @@ import io.vertx.core.shareddata.LocalMap;
 import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.*;
 import org.jacpfx.vertx.entrypoint.ServiceEntryPoint;
-import org.jacpfx.common.GlobalKeyHolder;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -53,7 +53,7 @@ public class WSLocalHandler implements WebSocketHandler {
         final WSEndpointHolder holder = getWSEndpointHolderFromSharedData(wsRegistry);
         if (holder != null) {
             final List<WSEndpoint> all = holder.getAll();
-            final Optional<WSEndpoint> first = all.stream().filter(e -> e.getBinaryHandlerId().equals(binaryHandlerID) && e.getTextHandlerId().equals(textHandlerID)).findFirst();
+            final Optional<WSEndpoint> first = all.parallelStream().filter(e -> e.getBinaryHandlerId().equals(binaryHandlerID) && e.getTextHandlerId().equals(textHandlerID)).findFirst();
             first.ifPresent(endpoint -> {
                 holder.remove(endpoint);
                 wsRegistry.replace(WS_ENDPOINT_HOLDER, serialize(holder));
@@ -72,9 +72,7 @@ public class WSLocalHandler implements WebSocketHandler {
             final String stringResult = TypeTool.trySerializeToString(wrapper.getBody());
             replyToEndpoint(stringResult, Serializer.serialize(wrapper.getBody()), wrapper.getEndpoint());
 
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
     }
@@ -93,7 +91,7 @@ public class WSLocalHandler implements WebSocketHandler {
             if (holderPayload != null) {
                 final WSEndpointHolder holder = (WSEndpointHolder) deserialize(holderPayload);
                 final List<WSEndpoint> all = holder.getAll();
-                all.stream().
+                all.parallelStream().
                         filter(endP -> endP.getUrl().equals(wrapper.getEndpoint().getUrl())).
                         forEach(
                                 endpoint -> replyToEndpoint(stringResult, payload, endpoint)
@@ -101,9 +99,7 @@ public class WSLocalHandler implements WebSocketHandler {
             }
 
 
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
     }
@@ -131,9 +127,9 @@ public class WSLocalHandler implements WebSocketHandler {
     private Optional<Operation> findServiceInfoEntry(ServiceInfoHolder resultHolder, String path) {
         return resultHolder.
                 getAll().
-                stream().
+                parallelStream().
                 map(info -> Arrays.asList(info.getOperations())).
-                flatMap(infos -> infos.stream()).
+                flatMap(Collection::stream).
                 filter(op -> op.getUrl().equalsIgnoreCase(path)).
                 findFirst();
     }

@@ -15,6 +15,7 @@ import org.jacpfx.vertx.entrypoint.ServiceEntryPoint;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -52,9 +53,7 @@ public class WSClusterHandler implements WebSocketHandler {
                 vertx.eventBus().send(wrapper.getEndpoint().getBinaryHandlerId(), Serializer.serialize(wrapper.getBody()));
             }
 
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
     }
@@ -64,12 +63,10 @@ public class WSClusterHandler implements WebSocketHandler {
     public void findRouteSocketInRegistryAndRemove(ServerWebSocket serverSocket) {
         final String binaryHandlerID = serverSocket.binaryHandlerID();
         final String textHandlerID = serverSocket.textHandlerID();
-        this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap(WS_REGISTRY, onSuccess(registryMap -> {
-                    registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
-                        retrieveEndpointHolderAndRemove(serverSocket, binaryHandlerID, textHandlerID, registryMap, wsEndpointHolder);
+        this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap(WS_REGISTRY, onSuccess(registryMap -> registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
+            retrieveEndpointHolderAndRemove(serverSocket, binaryHandlerID, textHandlerID, registryMap, wsEndpointHolder);
 
-                    });
-                })
+        }))
         );
     }
 
@@ -89,18 +86,18 @@ public class WSClusterHandler implements WebSocketHandler {
                 getAll().
                 stream().
                 map(info -> Arrays.asList(info.getOperations())).
-                flatMap(infos -> infos.stream()).
+                flatMap(Collection::stream).
                 filter(op -> op.getUrl().equalsIgnoreCase(path)).
                 findFirst();
     }
 
     private void createEndpointDefinitionAndRegister(ServerWebSocket serverSocket, final SharedData sharedData) {
         sharedData.<String, WSEndpointHolder>getClusterWideMap(WS_REGISTRY, onSuccess(registryMap ->
-                        getEndpointHolderAndAdd(serverSocket, registryMap, sharedData)
+                        getEndpointHolderAndAdd(serverSocket, registryMap)
         ));
     }
 
-    private void getEndpointHolderAndAdd(ServerWebSocket serverSocket, AsyncMap<String, WSEndpointHolder> registryMap, final SharedData sharedData) {
+    private void getEndpointHolderAndAdd(ServerWebSocket serverSocket, AsyncMap<String, WSEndpointHolder> registryMap) {
         registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
             if (wsEndpointHolder.succeeded()) {
                 updateWSEndpointHolder(serverSocket, registryMap, wsEndpointHolder);
@@ -138,9 +135,8 @@ public class WSClusterHandler implements WebSocketHandler {
     }
 
     private void addDefinitionToRegistry(ServerWebSocket serverSocket, EventBus eventBus, String path, WSEndpoint endpoint, AsyncMap<String, WSEndpointHolder> registryMap, WSEndpointHolder wsEndpointHolder) {
-        final WSEndpointHolder holder = wsEndpointHolder;
-        holder.add(endpoint);
-        registryMap.replace(WS_ENDPOINT_HOLDER, holder, s -> {
+        wsEndpointHolder.add(endpoint);
+        registryMap.replace(WS_ENDPOINT_HOLDER, wsEndpointHolder, s -> {
                     if (s.succeeded()) {
                         log("OK REPLACE: " + serverSocket.binaryHandlerID() + "  Thread" + Thread.currentThread());
                         sendToWSService(serverSocket, eventBus, path, endpoint);
@@ -182,10 +178,7 @@ public class WSClusterHandler implements WebSocketHandler {
         if (first.isPresent()) {
             first.ifPresent(endpoint -> {
                 wsEndpointHolder.remove(endpoint);
-                registryMap.replace(WS_ENDPOINT_HOLDER, wsEndpointHolder, replaceHolder -> {
-                    log("OK REMOVE: " + serverSocket.binaryHandlerID() + "  succeed:" + replaceHolder.succeeded());
-
-                });
+                registryMap.replace(WS_ENDPOINT_HOLDER, wsEndpointHolder, replaceHolder -> log("OK REMOVE: " + serverSocket.binaryHandlerID() + "  succeed:" + replaceHolder.succeeded()));
             });
         }
     }
@@ -198,31 +191,27 @@ public class WSClusterHandler implements WebSocketHandler {
             final WSMessageWrapper wrapper = (WSMessageWrapper) Serializer.deserialize(message.body());
             final String stringResult = TypeTool.trySerializeToString(wrapper.getBody());
             final byte[] payload = stringResult != null ? stringResult.getBytes() : Serializer.serialize(wrapper.getBody());
-            this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap(WS_REGISTRY, onSuccess(registryMap -> {
-                        registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
-                            if (wsEndpointHolder.succeeded() && wsEndpointHolder.result() != null) {
-                                final List<WSEndpoint> all = wsEndpointHolder.result().getAll();
-                                all.stream().filter(endP -> {
-                                    log(endP.getUrl() + " equals: " + endP.getUrl().equals(wrapper.getEndpoint().getUrl()));
-                                    return endP.getUrl().equals(wrapper.getEndpoint().getUrl());
-                                }).forEach(
-                                        endpoint -> {
-                                            if (stringResult != null) {
-                                                vertx.eventBus().send(endpoint.getTextHandlerId(), stringResult);
-                                            } else {
-                                                vertx.eventBus().send(endpoint.getBinaryHandlerId(), payload);
-                                            }
-                                        }
-                                );
-
+            this.vertx.sharedData().<String, WSEndpointHolder>getClusterWideMap(WS_REGISTRY, onSuccess(registryMap -> registryMap.get(WS_ENDPOINT_HOLDER, wsEndpointHolder -> {
+                if (wsEndpointHolder.succeeded() && wsEndpointHolder.result() != null) {
+                    final List<WSEndpoint> all = wsEndpointHolder.result().getAll();
+                    all.stream().filter(endP -> {
+                        log(endP.getUrl() + " equals: " + endP.getUrl().equals(wrapper.getEndpoint().getUrl()));
+                        return endP.getUrl().equals(wrapper.getEndpoint().getUrl());
+                    }).forEach(
+                            endpoint -> {
+                                if (stringResult != null) {
+                                    vertx.eventBus().send(endpoint.getTextHandlerId(), stringResult);
+                                } else {
+                                    vertx.eventBus().send(endpoint.getBinaryHandlerId(), payload);
+                                }
                             }
-                        });
-                    }
+                    );
+
+                }
+            })
             ));
 
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
     }
