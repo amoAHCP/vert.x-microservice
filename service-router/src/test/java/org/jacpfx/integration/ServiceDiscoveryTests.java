@@ -125,7 +125,7 @@ public class ServiceDiscoveryTests extends VertxTestBase {
                     testComplete();
                     ws.close();
                 });
-                ws.writeMessage(Buffer.buffer(message));
+                ws.writeBinaryMessage(Buffer.buffer(message));
             }));
 
         });
@@ -155,7 +155,7 @@ public class ServiceDiscoveryTests extends VertxTestBase {
                     testComplete();
                     ws.close();
                 });
-                ws.writeMessage(Buffer.buffer(message));
+                ws.writeBinaryMessage(Buffer.buffer(message));
             }));
 
         });
@@ -189,7 +189,7 @@ public class ServiceDiscoveryTests extends VertxTestBase {
                     ws.close();
                 });
                 Gson gg = new Gson();
-                ws.writeMessage(Buffer.buffer(gg.toJson(message)));
+                ws.writeBinaryMessage(Buffer.buffer(gg.toJson(message)));
             }));
 
         });
@@ -270,7 +270,7 @@ public class ServiceDiscoveryTests extends VertxTestBase {
                             reply.reply(new String(data.getBytes()) + "-" + "wsEndpointTwo");
                             ws.close();
                         });
-                        ws.writeMessage(Buffer.buffer(name));
+                        ws.writeBinaryMessage(Buffer.buffer(name));
                     }));
                 }
             });
@@ -292,7 +292,7 @@ public class ServiceDiscoveryTests extends VertxTestBase {
                             ws.close();
                         });
                         Gson gg = new Gson();
-                        ws.writeMessage(Buffer.buffer(gg.toJson(p1)));
+                        ws.writeBinaryMessage(Buffer.buffer(gg.toJson(p1)));
                     }));
                 }
             });

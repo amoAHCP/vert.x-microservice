@@ -143,7 +143,7 @@ public class WSConsumesTest extends VertxTestBase {
 
             try {
                 byte[] tmp = Serializer.serialize(message);
-                ws.writeMessage(Buffer.buffer(tmp));
+                ws.writeBinaryMessage(Buffer.buffer(tmp));
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -171,7 +171,7 @@ public class WSConsumesTest extends VertxTestBase {
             });
 
             Gson gg = new Gson();
-            ws.writeMessage(Buffer.buffer(gg.toJson(message)));
+            ws.writeBinaryMessage(Buffer.buffer(gg.toJson(message)));
         });
 
 
@@ -198,7 +198,7 @@ public class WSConsumesTest extends VertxTestBase {
 
             try {
                 byte[] tmp = Serializer.serialize(message);
-                ws.writeMessage(Buffer.buffer(tmp));
+                ws.writeBinaryMessage(Buffer.buffer(tmp));
             } catch (IOException e) {
                 e.printStackTrace();
             }
