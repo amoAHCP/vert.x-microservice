@@ -8,6 +8,7 @@ import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
 import org.jacpfx.common.*;
+import org.jacpfx.common.constants.GlobalKeyHolder;
 import org.junit.Before;
 import org.junit.Test;
 

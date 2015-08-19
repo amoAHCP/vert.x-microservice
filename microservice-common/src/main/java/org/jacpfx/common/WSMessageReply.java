@@ -1,6 +1,8 @@
 package org.jacpfx.common;
 
 import io.vertx.core.eventbus.EventBus;
+import io.vertx.core.json.JsonObject;
+import org.jacpfx.common.constants.GlobalKeyHolder;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -16,30 +18,41 @@ public class WSMessageReply {
 
     private final static ExecutorService EXECUTOR = Executors.newCachedThreadPool();
 
-    private WSEndpoint endpoint;
-    private EventBus bus;
+    private final WSEndpoint endpoint;
+    private final EventBus bus;
+    private final String localReply, replyToAll, replyToAllButSender, selfHostedPostfix;
+    private final boolean selfhosted;
 
     public WSMessageReply() {
-
+       this(null,null,null,null,null,null,false);
     }
 
-    public WSMessageReply(WSEndpoint endpoint, EventBus bus) {
+    public WSMessageReply(WSEndpoint endpoint, EventBus bus, JsonObject config) {
+        this(endpoint, bus, config.getString("wsReplyPath", GlobalKeyHolder.WS_REPLY), config.getString("wsReplyToAllPath", GlobalKeyHolder.WS_REPLY_TO_ALL), config.getString("wsReplyToAllButSenderPath", GlobalKeyHolder.WS_REPLY_TO_ALL_BUT_ME), config.getString("selfhosted-host",""),config.getBoolean("selfhosted",false));
+    }
+
+    public WSMessageReply(WSEndpoint endpoint, EventBus bus, String localReply, String replyToAll, String replyToAllButSender,String selfHostedPostfix, boolean selfhosted) {
         this.endpoint = endpoint;
         this.bus = bus;
+        this.selfHostedPostfix = selfHostedPostfix;
+        this.selfhosted = selfhosted;
+        this.localReply = selfhosted?localReply+selfHostedPostfix:localReply;
+        this.replyToAll = selfhosted?replyToAll+selfHostedPostfix:replyToAll;
+        this.replyToAllButSender = selfhosted?replyToAllButSender+selfHostedPostfix:replyToAllButSender;
     }
 
 
 
     public void replyAsync(Supplier<Serializable> execute) {
-        replyAsyncExecution("ws.reply", execute, WSReply.SENDER);
+        replyAsyncExecution(this.localReply, execute, WSReply.SENDER);
     }
 
     public void replyToAllAsync(Supplier<Serializable> execute) {
-        replyAsyncExecution("ws.replyToAll",execute,WSReply.ALL);
+        replyAsyncExecution(this.replyToAll,execute,WSReply.ALL);
     }
 
     public void replyToAllButSenderAsync(Supplier<Serializable> execute) {
-        replyAsyncExecution("ws.replyToAll",execute, WSReply.ALL_BUT_SENDER);
+        replyAsyncExecution(this.replyToAllButSender,execute, WSReply.ALL_BUT_SENDER);
     }
 
     private void replyAsyncExecution(final String url, Supplier<Serializable> execute,WSReply to) {
@@ -59,15 +72,15 @@ public class WSMessageReply {
     }
 
     public void reply(Serializable message) {
-        bus.send("ws.reply", serializeResult(message, WSReply.SENDER));
+        bus.send(this.localReply, serializeResult(message, WSReply.SENDER));
 
     }
 
     public void replyToAll(Serializable message) {
-        bus.send("ws.replyToAll", serializeResult(message, WSReply.ALL));
+        bus.send(this.replyToAll, serializeResult(message, WSReply.ALL));
     }
 
     public void replyToAllButSender(Serializable message) {
-        bus.send("ws.replyToAll", serializeResult(message, WSReply.ALL_BUT_SENDER));
+        bus.send(this.replyToAllButSender, serializeResult(message, WSReply.ALL_BUT_SENDER));
     }
 }

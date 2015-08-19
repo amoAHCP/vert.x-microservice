@@ -1,4 +1,4 @@
-package org.jacpfx.vertx.handler;
+package org.jacpfx.common.handler;
 
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.DeliveryOptions;
@@ -10,7 +10,7 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.shareddata.LocalMap;
 import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.*;
-import org.jacpfx.vertx.entrypoint.ServiceEntryPoint;
+import org.jacpfx.common.constants.GlobalKeyHolder;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -176,7 +176,7 @@ public class WSLocalHandler implements WebSocketHandler {
         serverSocket.handler(handler -> {
                     try {
                         log("send WS:+ " + endpoint.getUrl());
-                        eventBus.send(path, Serializer.serialize(new WSDataWrapper(endpoint, handler.getBytes())), new DeliveryOptions().setSendTimeout(ServiceEntryPoint.DEFAULT_SERVICE_TIMEOUT));
+                        eventBus.send(path, Serializer.serialize(new WSDataWrapper(endpoint, handler.getBytes())), new DeliveryOptions().setSendTimeout(GlobalKeyHolder.DEFAULT_SERVICE_TIMEOUT));
                     } catch (IOException e) {
                         e.printStackTrace();
                     }

@@ -8,10 +8,15 @@ import io.vertx.core.Future;
 import io.vertx.core.Handler;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.Message;
+import io.vertx.core.http.HttpServer;
+import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
 import org.jacpfx.common.*;
+import org.jacpfx.common.constants.GlobalKeyHolder;
+import org.jacpfx.common.handler.WSClusterHandler;
+import org.jacpfx.common.handler.WSLocalHandler;
 import org.jacpfx.common.spi.GSonConverter;
 import org.jacpfx.common.spi.JSONConverter;
 import org.jacpfx.vertx.registry.ServiceDiscovery;
@@ -38,22 +43,109 @@ import java.util.stream.Stream;
  */
 public abstract class ServiceVerticle extends AbstractVerticle {
     private static final Logger log = LoggerFactory.getLogger(ServiceVerticle.class);
+    private static final String HOST = getHostName();
+    private String host;
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private ServiceInfo descriptor;
     private static final String HOST_PREFIX = "";
     protected ServiceDiscovery dicovery;
+    private boolean clustered;
+    private org.jacpfx.common.handler.WebSocketHandler wsHandler;
+    private int port=0;
+
 
     @Override
     public final void start(final Future<Void> startFuture) {
         long startTime = System.currentTimeMillis();
+        port = selfHostedPort();
+
         // collect all service operations in service for descriptor
-        descriptor = createInfoObject(getAllOperationsInService(this.getClass().getDeclaredMethods()));
+        descriptor = createInfoObject(getAllOperationsInService(this.getClass().getDeclaredMethods()),port);
         // register info handler
         vertx.eventBus().consumer(serviceName() + "-info", this::info);
         registerService(startFuture);
         dicovery = ServiceDiscovery.getInstance(this.getVertx());
+
         long endTime = System.currentTimeMillis();
         log.info("start time: " + (endTime - startTime) + "ms");
+    }
+
+    private void initSelfHostedService() {
+        if(port > 0) {
+            updateConfiguration();
+
+            clustered = getConfig().getBoolean("clustered", false);
+
+            HttpServer server = vertx.createHttpServer(new HttpServerOptions().setHost(host)
+                    .setPort(port));
+
+            initWSHandlerInstance();
+            registerWebSocketHandler(server);
+            registerWSEventbusHandler();
+            server.listen(res -> {
+                log("listen on port: "+port+"  on Host: "+host+"  "+res.succeeded());
+            });
+        }
+    }
+
+    private void registerWSEventbusHandler() {
+        String localReply = getConfig().getString("wsReplyPath", GlobalKeyHolder.WS_REPLY);
+        String replyToAll = getConfig().getString("wsReplyToAllPath", GlobalKeyHolder.WS_REPLY_TO_ALL);
+        String replyToAllButSender = "";
+        vertx.eventBus().consumer(localReply+serviceName(), (Handler<Message<byte[]>>) wsHandler::replyToWSCaller);
+        vertx.eventBus().consumer(replyToAll+serviceName(), (Handler<Message<byte[]>>) wsHandler::replyToAllWS);
+        // TODO vertx.eventBus().consumer(wsReplyToAllButSenderPath, (Handler<Message<byte[]>>) wsHandler::replyToAllWS);
+    }
+
+    private void initWSHandlerInstance() {
+        if (clustered) {
+            wsHandler = new WSClusterHandler(this.vertx);
+        } else {
+            wsHandler = new WSLocalHandler(this.vertx);
+        }
+    }
+
+    private void updateConfiguration() {
+        getConfig().put("selfhosted",true);
+        getConfig().put("selfhosted-host", serviceName());
+    }
+
+    private void logDebug(String message){
+        if(true) {
+            log.debug(message);
+        }
+    }
+
+    private void log(final String value) {
+        log.info(value);
+    }
+
+    private void registerWebSocketHandler(HttpServer server) {
+        server.websocketHandler((serverSocket) -> {
+            if (serverSocket.path().equals("wsServiceInfo")) {
+                // TODO implement serviceInfo request
+                return;
+            }
+            logDebug("connect socket to path: " + serverSocket.path());
+            serverSocket.pause();
+            serverSocket.exceptionHandler(ex -> {
+                //TODO
+                ex.printStackTrace();
+            });
+            serverSocket.drainHandler(drain -> {
+                //TODO
+                log("drain");
+            });
+            serverSocket.endHandler(end -> {
+                //TODO
+                log("end");
+            });
+            serverSocket.closeHandler(close -> {
+                wsHandler.findRouteSocketInRegistryAndRemove(serverSocket);
+                log("close");
+            });
+            wsHandler.findRouteToWSServiceAndRegister(serverSocket);
+        });
     }
 
     private void registerService(final Future<Void> startFuture) {
@@ -63,6 +155,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                 try {
                     vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_REGISTER, Serializer.serialize(descriptor), handler -> {
                         log.info("Register Service: " + handler.succeeded());
+                        initSelfHostedService();
                         startFuture.complete();
                     });
                 } catch (IOException e) {
@@ -74,11 +167,11 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         }))));
     }
 
-    private ServiceInfo createInfoObject(List<Operation> operations) {
-        return new ServiceInfo(serviceName(), null, getHostName(), null, null, operations.toArray(new Operation[operations.size()]));
+    private ServiceInfo createInfoObject(List<Operation> operations, Integer port) {
+        return new ServiceInfo(serviceName(), null, getHostName(), null, null, port, operations.toArray(new Operation[operations.size()]));
     }
 
-    private String getHostName() {
+    private static String getHostName() {
         try {
             return InetAddress.getLocalHost().getHostName();
         } catch (UnknownHostException e) {
@@ -361,7 +454,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         int i = 0;
         for (java.lang.reflect.Parameter p : parameters) {
             if (p.getType().equals(WSMessageReply.class)) {
-                parameterResult[i] = new WSMessageReply(wrapper.getEndpoint(), this.vertx.eventBus());
+                parameterResult[i] = new WSMessageReply(wrapper.getEndpoint(), this.vertx.eventBus(), this.getConfig());
             } else {
                 putTypedWSParameter(consumes, parameterResult, p, i, wrapper.getData());
             }
@@ -556,9 +649,21 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         return null;
     }
 
+
+    private Integer selfHostedPort() {
+        if (this.getClass().isAnnotationPresent(Selfhosted.class)) {
+            final JsonObject config = getConfig();
+            Selfhosted selfHosted = this.getClass().getAnnotation(Selfhosted.class);
+            host = config.getString("host", HOST);
+            return config.getInteger("port",selfHosted.port());
+        }
+        return 0;
+    }
+
     private JsonObject getConfig() {
         return context != null ? context.config() : new JsonObject();
     }
+
 
     // TODO add versioning to service
     protected String getVersion() {

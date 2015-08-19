@@ -1,4 +1,4 @@
-package org.jacpfx.vertx.handler;
+package org.jacpfx.common.handler;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.MultiMap;
@@ -11,7 +11,7 @@ import io.vertx.core.http.HttpServerRequest;
 import org.jacpfx.common.Parameter;
 import org.jacpfx.common.Serializer;
 import org.jacpfx.common.TypeTool;
-import org.jacpfx.vertx.util.CustomRouteMatcher;
+import org.jacpfx.common.util.CustomRouteMatcher;
 
 import java.io.IOException;
 import java.util.Arrays;

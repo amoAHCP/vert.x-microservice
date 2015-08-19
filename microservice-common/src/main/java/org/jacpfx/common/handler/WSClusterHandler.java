@@ -1,4 +1,4 @@
-package org.jacpfx.vertx.handler;
+package org.jacpfx.common.handler;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Vertx;
@@ -11,7 +11,7 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.shareddata.AsyncMap;
 import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.*;
-import org.jacpfx.vertx.entrypoint.ServiceEntryPoint;
+import org.jacpfx.common.constants.GlobalKeyHolder;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -148,7 +148,7 @@ public class WSClusterHandler implements WebSocketHandler {
     private void sendToWSService(final ServerWebSocket serverSocket, final EventBus eventBus, final String path, final WSEndpoint endpoint) {
         serverSocket.handler(handler -> {
                     try {
-                        eventBus.send(path, Serializer.serialize(new WSDataWrapper(endpoint, handler.getBytes())), new DeliveryOptions().setSendTimeout(ServiceEntryPoint.DEFAULT_SERVICE_TIMEOUT));
+                        eventBus.send(path, Serializer.serialize(new WSDataWrapper(endpoint, handler.getBytes())), new DeliveryOptions().setSendTimeout(GlobalKeyHolder.DEFAULT_SERVICE_TIMEOUT));
                     } catch (IOException e) {
                         e.printStackTrace();
                     }

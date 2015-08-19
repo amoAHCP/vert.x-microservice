@@ -5,6 +5,7 @@ import io.vertx.core.AsyncResultHandler;
 import io.vertx.core.Vertx;
 import io.vertx.core.eventbus.Message;
 import org.jacpfx.common.*;
+import org.jacpfx.common.constants.GlobalKeyHolder;
 
 import javax.management.ServiceNotFoundException;
 import java.io.IOException;

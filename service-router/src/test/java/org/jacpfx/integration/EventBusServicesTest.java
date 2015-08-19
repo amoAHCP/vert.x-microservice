@@ -13,6 +13,7 @@ import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
 import org.jacpfx.common.*;
+import org.jacpfx.common.constants.GlobalKeyHolder;
 import org.jacpfx.entities.PersonOne;
 import org.jacpfx.entities.PersonOneX;
 import org.jacpfx.vertx.services.ServiceVerticle;

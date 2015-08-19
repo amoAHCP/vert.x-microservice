@@ -1,4 +1,4 @@
-package org.jacpfx.vertx.handler;
+package org.jacpfx.common.handler;
 
 import io.vertx.core.AsyncResult;
 import io.vertx.core.Handler;

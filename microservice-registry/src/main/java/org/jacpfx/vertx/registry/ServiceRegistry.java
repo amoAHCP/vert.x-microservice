@@ -12,6 +12,7 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.shareddata.AsyncMap;
 import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.*;
+import org.jacpfx.common.constants.GlobalKeyHolder;
 
 import java.io.IOException;
 import java.net.InetAddress;
