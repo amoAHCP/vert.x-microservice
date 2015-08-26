@@ -164,7 +164,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
      */
     private void serviceRegisterHandler(Message<ServiceInfo> message) {
         final ServiceInfo info = message.body();
-        if(info.getPort()>0) {
+        if(info.getPort()<=0) {
             final EventBus eventBus = vertx.eventBus();
             Stream.of(info.getOperations()).forEach(operation -> {
                         final String type = operation.getType();
@@ -202,7 +202,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
     }
 
 
-    private void fetchRegitryAndUpdateMetadata(Consumer<JsonObject> request) {
+    private void fetchRegitryAndUpdateMetadata(final Consumer<JsonObject> request) {
         vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_GET, "xyz", (AsyncResultHandler<Message<byte[]>>) serviceInfo ->
                 {
                     // TODO move this to static factory

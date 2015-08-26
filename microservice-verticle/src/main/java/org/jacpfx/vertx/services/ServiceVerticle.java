@@ -2,17 +2,18 @@ package org.jacpfx.vertx.services;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import io.vertx.core.AbstractVerticle;
-import io.vertx.core.AsyncResult;
-import io.vertx.core.Future;
-import io.vertx.core.Handler;
+import io.vertx.core.*;
 import io.vertx.core.eventbus.DeliveryOptions;
 import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpServer;
 import io.vertx.core.http.HttpServerOptions;
+import io.vertx.core.http.HttpServerResponse;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import io.vertx.ext.web.Router;
+import io.vertx.ext.web.RoutingContext;
+import io.vertx.ext.web.handler.BodyHandler;
 import org.jacpfx.common.*;
 import org.jacpfx.common.constants.GlobalKeyHolder;
 import org.jacpfx.common.handler.WSClusterHandler;
@@ -52,13 +53,14 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     private boolean clustered;
     private org.jacpfx.common.handler.WebSocketHandler wsHandler;
     private int port=0;
+    private Router router;
 
 
     @Override
     public final void start(final Future<Void> startFuture) {
         long startTime = System.currentTimeMillis();
         port = selfHostedPort();
-
+        router = Router.router(vertx);
         // collect all service operations in service for descriptor
         descriptor = createInfoObject(getAllOperationsInService(this.getClass().getDeclaredMethods()),port);
         // register info handler
@@ -70,30 +72,14 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         log.info("start time: " + (endTime - startTime) + "ms");
     }
 
-    private void initSelfHostedService() {
-        if(port > 0) {
-            updateConfiguration();
 
-            clustered = getConfig().getBoolean("clustered", false);
-
-            HttpServer server = vertx.createHttpServer(new HttpServerOptions().setHost(host)
-                    .setPort(port));
-
-            initWSHandlerInstance();
-            registerWebSocketHandler(server);
-            registerWSEventbusHandler();
-            server.listen(res -> {
-                log("listen on port: "+port+"  on Host: "+host+"  "+res.succeeded());
-            });
-        }
-    }
 
     private void registerWSEventbusHandler() {
         String localReply = getConfig().getString("wsReplyPath", GlobalKeyHolder.WS_REPLY);
         String replyToAll = getConfig().getString("wsReplyToAllPath", GlobalKeyHolder.WS_REPLY_TO_ALL);
         String replyToAllButSender = "";
         vertx.eventBus().consumer(localReply+serviceName(), (Handler<Message<byte[]>>) wsHandler::replyToWSCaller);
-        vertx.eventBus().consumer(replyToAll+serviceName(), (Handler<Message<byte[]>>) wsHandler::replyToAllWS);
+        vertx.eventBus().consumer(replyToAll + serviceName(), (Handler<Message<byte[]>>) wsHandler::replyToAllWS);
         // TODO vertx.eventBus().consumer(wsReplyToAllButSenderPath, (Handler<Message<byte[]>>) wsHandler::replyToAllWS);
     }
 
@@ -109,6 +95,10 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         getConfig().put("selfhosted",true);
         getConfig().put("selfhosted-host", serviceName());
     }
+
+
+
+
 
     private void logDebug(String message){
         if(true) {
@@ -167,6 +157,43 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         }))));
     }
 
+    private void initSelfHostedService() {
+        if(port > 0) {
+            updateConfiguration();
+
+            clustered = getConfig().getBoolean("clustered", false);
+
+            HttpServer server = vertx.createHttpServer(new HttpServerOptions().setHost(host)
+                    .setPort(port));
+
+            initWSHandlerInstance();
+            registerWebSocketHandler(server);
+            registerWSEventbusHandler();
+
+
+
+            router.route().handler(BodyHandler.create());
+
+
+            server.requestHandler(router::accept).listen(res -> {
+                log("listen on port: " + port + "  on Host: " + host + "  " + res.succeeded());
+            });
+        }
+    }
+
+    @Deprecated
+    /**
+     * use getParameterObject
+     */
+    private Parameter<String> getParameterEntity(final MultiMap params) {
+        final List<Parameter<String>> parameters = params.
+                entries().
+                stream().
+                map(entry -> new Parameter<>(entry.getKey(), entry.getValue())).
+                collect(Collectors.toList());
+        return new Parameter<>(parameters);
+    }
+
     private ServiceInfo createInfoObject(List<Operation> operations, Integer port) {
         return new ServiceInfo(serviceName(), null, getHostName(), null, null, port, operations.toArray(new Operation[operations.size()]));
     }
@@ -218,10 +245,21 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         switch (opType.value()) {
             case REST_POST:
                 parameters.addAll(getAllRESTParameters(method));
+
+
                 vertx.eventBus().consumer(url, handler -> genericRESTHandler(handler, method));
                 break;
             case REST_GET:
                 parameters.addAll(getAllRESTParameters(method));
+
+                // TODO extract to method
+
+                router.get(url).handler(routingContext -> {
+                    getParameterEntity(routingContext.request().params()).getAll().forEach(elem -> {
+                        System.out.println("--> " + elem.getName() + " : " + elem.getValue());
+                    });
+                    genericLocalRESTHandler(routingContext,method);
+                });
                 vertx.eventBus().consumer(url, handler -> genericRESTHandler(handler, method));
                 break;
             case WEBSOCKET:
@@ -350,6 +388,33 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     /**
+     * executes a requested Service Method in ServiceVerticle  when directly routed in the ServiceVerticle itself
+     *
+     * @param routingContext the web RoutingContext
+     * @param method the method to invoke on request
+     */
+    private void genericLocalRESTHandler(RoutingContext routingContext, Method method) {
+        HttpServerResponse response = routingContext.response();
+        try {
+
+            final Object replyValue = method.invoke(this, invokeLocalPatameters(routingContext, method));
+            if (replyValue != null) {
+                if (TypeTool.isCompatibleRESTReturnType(replyValue)) {
+                    response.end(TypeTool.trySerializeToString(replyValue));
+                } else {
+                    response.end(serializeToJSON(replyValue));
+                }
+            }
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
+            response.setStatusCode(200).write(e.getLocalizedMessage());
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+            response.setStatusCode(200).write(e.getLocalizedMessage());
+        }
+    }
+
+    /**
      * executes a requested Service Method in ServiceVerticle
      *
      * @param m
@@ -369,6 +434,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
             e.printStackTrace();
             m.fail(200, e.getMessage());
         } catch (InvocationTargetException e) {
+            e.printStackTrace();
             m.fail(200, e.getMessage());
         }
     }
@@ -484,14 +550,30 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
 
     /**
-     * checks method parameters an request parameters for method invocation
+     * checks method parameters and request parameters for method invocation
      *
-     * @param m      the message
+     * @param context      the message
      * @param method the service method
      * @return an array with all valid method parameters
      */
-    private Object[] invokePatameters(Message<byte[]> m, Method method) {
-        final Parameter<String> params = getParameterObject(m);
+    private Object[] invokePatameters(Message<byte[]> context, Method method) {
+        final Parameter<String> params = getParameterObject(context);
+        return getInvokedParameters(context, method, params);
+    }
+
+    /**
+     * checks method parameters and request parameters for method invocation
+     *
+     * @param context      the http routingContext
+     * @param method the service method
+     * @return an array with all valid method parameters
+     */
+    private Object[] invokeLocalPatameters(RoutingContext context, Method method) {
+        final Parameter<String> params = getParameterObject(context.request().params());
+        return getInvokedParameters(context, method, params);
+    }
+
+    private Object[] getInvokedParameters(Object context, Method method, Parameter<String> params) {
         final Annotation[][] parameterAnnotations = method.getParameterAnnotations();
         final Class[] parameterTypes = method.getParameterTypes();
         final Object[] parameters = new Object[parameterAnnotations.length];
@@ -506,8 +588,8 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                 putFormParameter(parameters, i, annotation, params);
             } else {
                 final Class typeClass = parameterTypes[i];
-                if (typeClass.isAssignableFrom(m.getClass())) {
-                    parameters[i] = m;
+                if (typeClass.isAssignableFrom(context.getClass())) {
+                    parameters[i] = context;
                 }
             }
             i++;
@@ -515,6 +597,15 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         return parameters;
     }
 
+
+    private Parameter<String> getParameterObject(final MultiMap params) {
+        final List<Parameter<String>> parameters = params.
+                entries().
+                stream().
+                map(entry -> new Parameter<>(entry.getKey(), entry.getValue())).
+                collect(Collectors.toList());
+        return new Parameter<>(parameters);
+    }
 
     private Parameter<String> getParameterObject(Message<byte[]> m) {
         Parameter<String> params = null;
@@ -527,6 +618,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         }
         return params;
     }
+
 
     private void putQueryParameter(Object[] parameters, int counter, Annotation annotation, final Parameter<String> params) {
         if (QueryParam.class.isAssignableFrom(annotation.getClass())) {

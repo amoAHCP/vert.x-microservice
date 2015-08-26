@@ -184,6 +184,10 @@ public class ServiceInfo implements Serializable {
         return port;
     }
 
+    public boolean isSelfhosted(){
+        return port>0?true:false;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

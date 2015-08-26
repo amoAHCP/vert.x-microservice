@@ -166,7 +166,11 @@ public class Operation implements Serializable{
     }
 
     public Operation websocketConnection(Handler<WebSocket> wsConnect) {
-        getHttpClient().ifPresent(httpClient -> httpClient.websocket(connectionPort,connectionHost,serviceName.concat(name),wsConnect));
+        getHttpClient().ifPresent(httpClient -> {
+            System.out.println("Connect: "+connectionHost+":"+connectionPort+"  "+serviceName.concat(name));
+            httpClient.websocket(connectionPort, connectionHost, serviceName.concat(name),wsConnect) ;
+
+        });
         return new Operation(name,description,url,type,produces,consumes,vertx,parameter);
     }
 
