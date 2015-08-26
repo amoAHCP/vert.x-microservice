@@ -15,7 +15,6 @@ import java.util.stream.Stream;
 
 /**
  * Created by amo on 27.10.14.
- * TODO remove setter
  */
 public class ServiceInfo implements Serializable {
     private final String serviceName;
@@ -23,18 +22,21 @@ public class ServiceInfo implements Serializable {
     private final String hostName;
     private final String serviceURL;
     private final String description;
+
+
+    private final Integer port;
     private final Operation[] operations;
     private transient Vertx vertx;
 
     public ServiceInfo(String serviceName, Operation... operations) {
-        this(serviceName, null, null, null, null, operations);
+        this(serviceName, null, null, null, null, 0,operations);
     }
 
-    public ServiceInfo(String serviceName, String lastConnection, String hostName, String serviceURL, String description, Operation... operations) {
-        this(serviceName,lastConnection,hostName,serviceURL,description,null,operations);
+    public ServiceInfo(String serviceName, String lastConnection, String hostName, String serviceURL, String description, Integer port,Operation... operations) {
+        this(serviceName,lastConnection,hostName,serviceURL,description,null,port,operations);
     }
 
-    public ServiceInfo(String serviceName, String lastConnection, String hostName, String serviceURL, String description,Vertx vertx, Operation... operations) {
+    public ServiceInfo(String serviceName, String lastConnection, String hostName, String serviceURL, String description,Vertx vertx, Integer port, Operation... operations) {
         this.serviceName = serviceName;
         this.lastConnection = lastConnection;
         this.hostName = hostName;
@@ -42,6 +44,7 @@ public class ServiceInfo implements Serializable {
         this.description = description;
         this.operations = operations;
         this.vertx = vertx;
+        this.port = port;
     }
 
     /**
@@ -50,7 +53,7 @@ public class ServiceInfo implements Serializable {
      * @param vertx
      */
     public ServiceInfo(ServiceInfo info, Vertx vertx) {
-        this(info.serviceName, info.lastConnection, info.hostName, info.serviceURL, info.description,vertx,
+        this(info.serviceName, info.lastConnection, info.hostName, info.serviceURL, info.description,vertx,0,
                 Stream.of(info.operations).
                         map(op -> new Operation(op, vertx)).
                         collect(Collectors.toList()).
@@ -109,9 +112,7 @@ public class ServiceInfo implements Serializable {
         return Stream.of(operations).filter(op -> op.getType().equalsIgnoreCase(typeString));
     }
 
-    public static ServiceInfo buildFromJson(JsonObject info) {
-        return buildFromJson(info,null);
-    }
+
 
     public static ServiceInfo buildFromJson(JsonObject info,Vertx vertx) {
         final String serviceName = info.getString("serviceName");
@@ -119,12 +120,13 @@ public class ServiceInfo implements Serializable {
         final String hostName = info.getString("hostName");
         final String serviceURL = info.getString("serviceURL");
         final String description = info.getString("description");
+        final Integer port = info.getInteger("port");
         final List<Operation> operations  = JSONTool.getObjectListFromArray(info.getJsonArray("operations")).
                 stream().
                 map(operation -> addOperation(operation,vertx)).
                 collect(Collectors.toList());
 
-        return new ServiceInfo(serviceName, lastConnection, hostName, serviceURL, description, vertx,operations.toArray(new Operation[operations.size()]));
+        return new ServiceInfo(serviceName, lastConnection, hostName, serviceURL, description, vertx,port,operations.toArray(new Operation[operations.size()]));
     }
 
     private static Operation addOperation(JsonObject operation,Vertx vertx) {
@@ -156,7 +158,7 @@ public class ServiceInfo implements Serializable {
 
     public  ServiceInfo buildFromServiceInfo(String serviceURL, Operation ...operations) {
 
-        return new ServiceInfo(serviceName,lastConnection,hostName,serviceURL,description,operations);
+        return new ServiceInfo(serviceName,lastConnection,hostName,serviceURL,description,port,operations);
     }
 
 
@@ -169,12 +171,21 @@ public class ServiceInfo implements Serializable {
         tmp.put("hostName", info.getHostName());
         tmp.put("serviceURL", info.getServiceURL());
         tmp.put("description", info.getDescription());
+        tmp.put("port", info.getPort());
         tmp.put("operations", operationsArray);
         return tmp;
     }
 
     private static JsonObject createOperation(Operation op) {
         return JSONTool.createOperationObject(op);
+    }
+
+    public Integer getPort() {
+        return port;
+    }
+
+    public boolean isSelfhosted(){
+        return port>0?true:false;
     }
 
     @Override
@@ -190,8 +201,10 @@ public class ServiceInfo implements Serializable {
         if (hostName != null ? !hostName.equals(that.hostName) : that.hostName != null) return false;
         if (serviceURL != null ? !serviceURL.equals(that.serviceURL) : that.serviceURL != null) return false;
         if (description != null ? !description.equals(that.description) : that.description != null) return false;
+        if (port != null ? !port.equals(that.port) : that.port != null) return false;
         // Probably incorrect - comparing Object[] arrays with Arrays.equals
-        return Arrays.equals(operations, that.operations);
+        if (!Arrays.equals(operations, that.operations)) return false;
+        return !(vertx != null ? !vertx.equals(that.vertx) : that.vertx != null);
 
     }
 
@@ -202,9 +215,12 @@ public class ServiceInfo implements Serializable {
         result = 31 * result + (hostName != null ? hostName.hashCode() : 0);
         result = 31 * result + (serviceURL != null ? serviceURL.hashCode() : 0);
         result = 31 * result + (description != null ? description.hashCode() : 0);
+        result = 31 * result + (port != null ? port.hashCode() : 0);
         result = 31 * result + (operations != null ? Arrays.hashCode(operations) : 0);
+        result = 31 * result + (vertx != null ? vertx.hashCode() : 0);
         return result;
     }
+
 
     @Override
     public String toString() {
@@ -214,7 +230,9 @@ public class ServiceInfo implements Serializable {
                 ", hostName='" + hostName + '\'' +
                 ", serviceURL='" + serviceURL + '\'' +
                 ", description='" + description + '\'' +
+                ", port=" + port +
                 ", operations=" + Arrays.toString(operations) +
+                ", vertx=" + vertx +
                 '}';
     }
 }

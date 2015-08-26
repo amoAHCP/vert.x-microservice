@@ -1,4 +1,4 @@
-package org.jacpfx.vertx.util;
+package org.jacpfx.common.util;
 
 
 import io.vertx.core.Handler;

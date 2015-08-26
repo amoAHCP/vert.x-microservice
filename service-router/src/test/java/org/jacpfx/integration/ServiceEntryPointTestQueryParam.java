@@ -1,44 +1,94 @@
 package org.jacpfx.integration;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
+import io.vertx.core.DeploymentOptions;
+import io.vertx.core.Vertx;
+import io.vertx.core.http.HttpClient;
+import io.vertx.core.http.HttpClientOptions;
+import io.vertx.core.json.JsonObject;
+import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
+import io.vertx.test.fakecluster.FakeClusterManager;
+import org.jacpfx.common.OperationType;
+import org.jacpfx.common.Type;
+import org.jacpfx.common.WSMessageReply;
+import org.jacpfx.entities.PersonOne;
+import org.jacpfx.vertx.services.ServiceVerticle;
+import org.junit.Before;
+
+import javax.ws.rs.ApplicationPath;
+import javax.ws.rs.Consumes;
+import javax.ws.rs.Path;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * Created by amo on 13.11.14.
  */
 public class ServiceEntryPointTestQueryParam extends VertxTestBase {
-    private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-/*
+    private final static int MAX_RESPONSE_ELEMENTS = 4;
+    public static final String SERVICE_REST_GET = "/wsService";
+    private static final String HOST="localhost";
+
+    protected int getNumNodes() {
+        return 1;
+    }
+
+    protected Vertx getVertx() {
+        return vertices[0];
+    }
+
     @Override
-    public void start() {
-        // Make sure we call initialize() - this sets up the assert stuff so assert functionality works correctly
-        initialize();
+    protected ClusterManager getClusterManager() {
+        return new FakeClusterManager();
+    }
+
+
+    private HttpClient client;
+
+    @Override
+    public void setUp() throws Exception {
+        super.setUp();
+        startNodes(getNumNodes());
+
+    }
+
+    @Before
+    public void startVerticles() throws InterruptedException {
+
+        CountDownLatch latch = new CountDownLatch(1);
+        CountDownLatch latch2 = new CountDownLatch(1);
+        DeploymentOptions options = new DeploymentOptions().setInstances(1);
+        options.setConfig(new JsonObject().put("clustered", false).put("host", HOST));
         // Deploy the module - the System property `vertx.modulename` will contain the name of the module so you
         // don't have to hardecode it in your tests
-        container.deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint", asyncResult -> {
+        getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint",options, asyncResult -> {
             // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
+            System.out.println("start entry point: " + asyncResult.succeeded());
             assertTrue(asyncResult.succeeded());
             assertNotNull("deploymentID should not be null", asyncResult.result());
             // If deployed correctly then start the tests!
-            startTests();
+            latch.countDown();
 
         });
+        awaitLatch(latch);
+        getVertx().deployVerticle(new WsServiceOne(), options, asyncResult -> {
+            // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
+            System.out.println("start service: " + asyncResult.succeeded());
+            assertTrue(asyncResult.succeeded());
+            assertNotNull("deploymentID should not be null", asyncResult.result());
+            // If deployed correctly then start the tests!
+            //   latch2.countDown();
+
+            latch2.countDown();
+
+        });
+
+        client = getVertx().
+                createHttpClient(new HttpClientOptions());
+        awaitLatch(latch2);
+
     }
 
-    private HttpClient getClient() {
-
-        Vertx vertx = VertxFactory.newVertx();
-        HttpClient client = vertx.
-                createHttpClient().
-                setHost("localhost").
-                setPort(8080);
-
-        return client;
-    }
-
-
-    @Test
+   /* @Test
     public void testSimpleRESTGetQueryParamRoute() throws InterruptedException {
         final ConcurrentSharedMap<Object, Object> map = vertx.sharedData().getMap(ServiceRegistry.SERVICE_REGISTRY);
         int size = map.size();
@@ -66,28 +116,41 @@ public class ServiceEntryPointTestQueryParam extends VertxTestBase {
 
         });
 
-    }
-
-
-
-
-    private JsonObject getServiceInfoDesc(String serviceName) {
-        JsonObject info = new JsonObject();
-        final JsonArray operationsArray = new JsonArray();
-        getDummyOperations(serviceName).forEach(op -> operationsArray.addObject(op));
-        info.putString("serviceName", serviceName);
-        info.putArray("operations", operationsArray);
-
-        return info;
-    }
-
-    private List<JsonObject> getDummyOperations(String serviceName) {
-        List<JsonObject> result = new ArrayList<>();
-
-        result.add(org.jacpfx.common.JSONTool.createOperationObject(serviceName + "/operation1", Type.REST_GET.name(), new String[]{"text"}));
-        result.add(org.jacpfx.common.JSONTool.createOperationObject(serviceName + "/operation2", Type.REST_GET.name(), new String[]{"text"},"name"));
-        result.add(org.jacpfx.common.JSONTool.createOperationObject(serviceName + "/operation3:value", Type.REST_GET.name(), new String[]{"text"},"value"));
-        result.add(org.jacpfx.common.JSONTool.createOperationObject(serviceName + "/operation4", Type.REST_GET.name(), new String[]{"text"}));
-        return result;
     }*/
+
+
+    @ApplicationPath(SERVICE_REST_GET)
+    public class WsServiceOne extends ServiceVerticle {
+
+        @Path("/testSimpleString")
+        @OperationType(Type.REST_GET)
+        @Consumes("application/json")
+        public void testSimpleString(String name, WSMessageReply reply) {
+            reply.reply(name);
+        }
+
+        @Path("/testSimpleObjectBySerialisation")
+        @OperationType(Type.REST_GET)
+        public void testSimpleObjectBySerialisation(PersonOne p1, WSMessageReply reply) {
+            reply.reply(p1.getName());
+        }
+
+        @Path("/testSimpleObjectByJSONSerialisation")
+        @OperationType(Type.REST_POST)
+        @Consumes("application/json")
+        public void testSimpleObjectByJSONSerialisation(PersonOne p1, WSMessageReply reply) {
+            reply.reply(p1.getName());
+        }
+
+        @Path("/testSimpleObjectByBinarySerialisation")
+        @OperationType(Type.REST_POST)
+        @Consumes("application/octet-stream")
+        public void testSimpleObjectByBinarySerialisation(PersonOne p1, WSMessageReply reply) {
+            reply.reply(p1.getName());
+        }
+
+    }
+
+
+
 }

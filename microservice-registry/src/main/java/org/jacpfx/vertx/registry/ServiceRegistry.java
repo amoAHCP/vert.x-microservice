@@ -12,6 +12,7 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.core.shareddata.AsyncMap;
 import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.*;
+import org.jacpfx.common.constants.GlobalKeyHolder;
 
 import java.io.IOException;
 import java.net.InetAddress;
@@ -19,7 +20,6 @@ import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.List;
-import java.util.TimeZone;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -58,6 +58,7 @@ public class ServiceRegistry extends AbstractVerticle {
     private int port;
     private boolean debug;
     private final ServiceInfoDecoder serviceInfoDecoder = new ServiceInfoDecoder();
+    private final SimpleDateFormat TIME_FORMAT = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
 
     private static String getHostName() {
         try {
@@ -288,9 +289,7 @@ public class ServiceRegistry extends AbstractVerticle {
 
 
     private String getDateStamp() {
-        SimpleDateFormat timeFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
-        timeFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
-        return timeFormat.format(Calendar.getInstance().getTime());
+        return TIME_FORMAT.format(Calendar.getInstance().getTime());
     }
 
     private ServiceInfoHolder buildServiceInfoForEntryPoint(ServiceInfoHolder message) {
@@ -303,6 +302,22 @@ public class ServiceRegistry extends AbstractVerticle {
 
 
     private ServiceInfo updateOperationUrl(String wsMainURL, String httpMainURL, ServiceInfo infoObj, String serviceURL, String host, int port) {
+        String wsURL = wsMainURL;
+        String httpURL = httpMainURL;
+        Integer portSettings = port;
+        String hostSettings = host;
+        if(infoObj.isSelfhosted()){
+            // TODO check secure connections !!!! this is only a PoC !!!!
+            final String hostPort = infoObj.getHostName()+":"+infoObj.getPort();
+            wsURL = "ws://"+hostPort;
+            httpURL = "http://"+hostPort;
+            portSettings = infoObj.getPort();
+            hostSettings = infoObj.getHostName();
+        }
+        final String wsURLTemp = wsURL;
+        final String httpURLTemp = httpURL;
+        final Integer portTemp = portSettings;
+        final String hostTemp = hostSettings;
         final List<Operation> mappedOperations = Stream.of(infoObj.getOperations()).map(operation -> {
             final String url = operation.getUrl();
             final Type type = Type.valueOf(operation.getType());
@@ -310,9 +325,9 @@ public class ServiceRegistry extends AbstractVerticle {
                 case EVENTBUS:
                     return createOperation(infoObj.getServiceName(), host, 0, operation, url);
                 case WEBSOCKET:
-                    return createOperation(infoObj.getServiceName(), host, port, operation, wsMainURL.concat(url));
+                    return createOperation(infoObj.getServiceName(), hostTemp, portTemp, operation, wsURLTemp.concat(url));
                 default:
-                    return createOperation(infoObj.getServiceName(), host, port, operation, httpMainURL.concat(url));
+                    return createOperation(infoObj.getServiceName(), hostTemp, portTemp, operation, httpURLTemp.concat(url));
 
             }
         }).collect(Collectors.toList());

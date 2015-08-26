@@ -12,11 +12,12 @@ import io.vertx.core.logging.LoggerFactory;
 import io.vertx.ext.dropwizard.DropwizardMetricsOptions;
 import io.vertx.ext.dropwizard.MetricsService;
 import org.jacpfx.common.*;
-import org.jacpfx.vertx.handler.RESTHandler;
-import org.jacpfx.vertx.handler.WSClusterHandler;
-import org.jacpfx.vertx.handler.WSLocalHandler;
-import org.jacpfx.vertx.util.CustomRouteMatcher;
-import org.jacpfx.vertx.util.WebSocketRepository;
+import org.jacpfx.common.constants.GlobalKeyHolder;
+import org.jacpfx.common.handler.RESTHandler;
+import org.jacpfx.common.handler.WSClusterHandler;
+import org.jacpfx.common.handler.WSLocalHandler;
+import org.jacpfx.common.util.CustomRouteMatcher;
+import org.jacpfx.common.util.WebSocketRepository;
 
 import java.io.IOException;
 import java.util.HashSet;
@@ -31,12 +32,11 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
     private static final String HOST = getHostName();
     private static final int PORT = 8080;
-    public static final int DEFAULT_SERVICE_TIMEOUT = 10000;
+
     private static final String SERVICE_REGISTRY = "org.jacpfx.vertx.registry.ServiceRegistry";
     private static final String SERVICE_INFO_PATH = "/serviceInfo";
     private static final Logger log = LoggerFactory.getLogger(ServiceEntryPoint.class);
-    private static final String WS_REPLY = "ws.reply";
-    private static final String WS_REPLY_TO_ALL = "ws.replyToAll";
+
 
 
 
@@ -44,14 +44,13 @@ public class ServiceEntryPoint extends AbstractVerticle {
     private final WebSocketRepository repository = new WebSocketRepository();
     private final ServiceInfoDecoder serviceInfoDecoder = new ServiceInfoDecoder();
     private final CustomRouteMatcher routeMatcher = new CustomRouteMatcher();
-    private org.jacpfx.vertx.handler.WebSocketHandler wsHandler;
+    private org.jacpfx.common.handler.WebSocketHandler wsHandler;
     private RESTHandler restHandler;
 
     private String serviceInfoPath;
     private String serviceRegisterPath;
     private String serviceUnRegisterPath;
-    private String wsReplyPath;
-    private String wsReplyToAllPath;
+    private String wsReplyPath,wsReplyToAllPath,wsReplyToAllButSenderPath;
     private String serviceRegistry;
     private String host;
     private int port;
@@ -85,6 +84,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
 
         vertx.eventBus().consumer(wsReplyPath, (Handler<Message<byte[]>>) wsHandler::replyToWSCaller);
         vertx.eventBus().consumer(wsReplyToAllPath, (Handler<Message<byte[]>>) wsHandler::replyToAllWS);
+        // TODO vertx.eventBus().consumer(wsReplyToAllButSenderPath, (Handler<Message<byte[]>>) wsHandler::replyToAllWS);
         vertx.eventBus().consumer(serviceRegisterPath, this::serviceRegisterHandler);
         vertx.eventBus().consumer(serviceUnRegisterPath, this::serviceUnRegisterHandler);
 
@@ -131,13 +131,14 @@ public class ServiceEntryPoint extends AbstractVerticle {
         serviceInfoPath = config.getString("serviceInfoPath", SERVICE_INFO_PATH);
         serviceRegisterPath = config.getString("serviceRegisterPath", GlobalKeyHolder.SERVICE_REGISTER_HANDLER);
         serviceUnRegisterPath = config.getString("serviceUnRegisterPath", GlobalKeyHolder.SERVICE_UNREGISTER_HANDLER);
-        wsReplyPath = config.getString("wsReplyPath", WS_REPLY);
-        wsReplyToAllPath = config.getString("wsReplyToAllPath", WS_REPLY_TO_ALL);
+        wsReplyPath = config.getString("wsReplyPath", GlobalKeyHolder.WS_REPLY);
+        wsReplyToAllPath = config.getString("wsReplyToAllPath", GlobalKeyHolder.WS_REPLY_TO_ALL);
+        wsReplyToAllButSenderPath = config.getString("wsReplyToAllButSenderPath", GlobalKeyHolder.WS_REPLY_TO_ALL_BUT_ME);
         serviceRegistry = config.getString("serviceRegistry", SERVICE_REGISTRY);
         clustered = config.getBoolean("clustered", false);
         host = config.getString("host", HOST);
         port = config.getInteger("port", PORT);
-        defaultServiceTimeout = config.getInteger("defaultServiceTimeout", DEFAULT_SERVICE_TIMEOUT);
+        defaultServiceTimeout = config.getInteger("defaultServiceTimeout", GlobalKeyHolder.DEFAULT_SERVICE_TIMEOUT);
         mainURL = host.concat(":").concat(Integer.valueOf(port).toString());
         debug = config.getBoolean("debug",false);
     }
@@ -163,20 +164,22 @@ public class ServiceEntryPoint extends AbstractVerticle {
      */
     private void serviceRegisterHandler(Message<ServiceInfo> message) {
         final ServiceInfo info = message.body();
-        final EventBus eventBus = vertx.eventBus();
-        Stream.of(info.getOperations()).forEach(operation -> {
-                    final String type = operation.getType();
-                    // TODO use "better" key than a simple relative url
-                    final String url = operation.getUrl();
-                    final String[] mimes = operation.getProduces() != null ? operation.getProduces() : new String[]{""};
-                    // TODO specify timeout in service info object, so that every Service can specify his own timeout
-                    // defaultServiceTimeout =   operation.getInteger("timeout");
-                    if (!registeredRoutes.contains(url)) {
-                        registeredRoutes.add(url);
-                        handleServiceType(eventBus, type, url, mimes);
+        if(info.getPort()<=0) {
+            final EventBus eventBus = vertx.eventBus();
+            Stream.of(info.getOperations()).forEach(operation -> {
+                        final String type = operation.getType();
+                        // TODO use "better" key than a simple relative url
+                        final String url = operation.getUrl();
+                        final String[] mimes = operation.getProduces() != null ? operation.getProduces() : new String[]{""};
+                        // TODO specify timeout in service info object, so that every Service can specify his own timeout
+                        // defaultServiceTimeout =   operation.getInteger("timeout");
+                        if (!registeredRoutes.contains(url)) {
+                            registeredRoutes.add(url);
+                            handleServiceType(eventBus, type, url, mimes);
+                        }
                     }
-                }
-        );
+            );
+        }
 
     }
 
@@ -199,7 +202,7 @@ public class ServiceEntryPoint extends AbstractVerticle {
     }
 
 
-    private void fetchRegitryAndUpdateMetadata(Consumer<JsonObject> request) {
+    private void fetchRegitryAndUpdateMetadata(final Consumer<JsonObject> request) {
         vertx.eventBus().send(GlobalKeyHolder.SERVICE_REGISTRY_GET, "xyz", (AsyncResultHandler<Message<byte[]>>) serviceInfo ->
                 {
                     // TODO move this to static factory
