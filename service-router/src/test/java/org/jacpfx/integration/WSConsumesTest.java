@@ -11,10 +11,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
-import org.jacpfx.common.WSMessageReply;
-import org.jacpfx.common.OperationType;
-import org.jacpfx.common.Serializer;
-import org.jacpfx.common.Type;
+import org.jacpfx.common.*;
 import org.jacpfx.entities.PersonOne;
 import org.jacpfx.entities.PersonOneX;
 import org.jacpfx.vertx.services.ServiceVerticle;
@@ -215,28 +212,28 @@ public class WSConsumesTest extends VertxTestBase {
         @Path("/testSimpleString")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void testSimpleString(String name, WSMessageReply reply) {
-              reply.reply(name);
+        public void testSimpleString(String name, WSResponse reply) {
+              reply.reply(()->name);
         }
 
         @Path("/testSimpleObjectBySerialisation")
         @OperationType(Type.WEBSOCKET)
-        public void testSimpleObjectBySerialisation(PersonOne p1, WSMessageReply reply) {
-            reply.reply(p1.getName());
+        public void testSimpleObjectBySerialisation(PersonOne p1, WSResponse reply) {
+            reply.reply(()->p1.getName());
         }
 
         @Path("/testSimpleObjectByJSONSerialisation")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void testSimpleObjectByJSONSerialisation(PersonOne p1, WSMessageReply reply) {
-            reply.reply(p1.getName());
+        public void testSimpleObjectByJSONSerialisation(PersonOne p1, WSResponse reply) {
+            reply.reply(()->p1.getName());
         }
 
         @Path("/testSimpleObjectByBinarySerialisation")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/octet-stream")
-        public void testSimpleObjectByBinarySerialisation(PersonOne p1, WSMessageReply reply) {
-            reply.reply(p1.getName());
+        public void testSimpleObjectByBinarySerialisation(PersonOne p1, WSResponse reply) {
+            reply.reply(()->p1.getName());
         }
 
     }

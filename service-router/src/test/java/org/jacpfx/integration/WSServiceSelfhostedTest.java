@@ -9,10 +9,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
-import org.jacpfx.common.OperationType;
-import org.jacpfx.common.Selfhosted;
-import org.jacpfx.common.Type;
-import org.jacpfx.common.WSMessageReply;
+import org.jacpfx.common.*;
 import org.jacpfx.vertx.services.ServiceVerticle;
 import org.junit.Before;
 import org.junit.Test;
@@ -321,13 +318,13 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
     public class WsServiceOne extends ServiceVerticle {
         @Path("/wsEndpintOne")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointOne(String name, WSMessageReply reply) {
+        public void wsEndpointOne(String name, WSResponse reply) {
 
         }
 
         @Path("/wsEndpintTwo")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointTwo(String name, WSMessageReply reply) {
+        public void wsEndpointTwo(String name, WSResponse reply) {
 
             replyAsyncTwo(name + "-3", reply);
             replyAsyncTwo(name + "-4", reply);
@@ -336,8 +333,8 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
             System.out.println("wsEndpointTwo-2: " + name + "   :::" + this);
         }
 
-        private void replyAsyncTwo(String name, WSMessageReply reply) {
-            reply.replyAsync(() -> {
+        private void replyAsyncTwo(String name, WSResponse reply) {
+            reply.reply(() -> {
                 try {
                     TimeUnit.MILLISECONDS.sleep(1000);
                 } catch (InterruptedException e) {
@@ -347,8 +344,8 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
             });
         }
 
-        private void replyToAllAsync(String name, WSMessageReply reply) {
-            reply.replyToAllAsync(() -> {
+        private void replyToAllAsync(String name, WSResponse reply) {
+            reply.replyToAll(() -> {
                 try {
                     TimeUnit.MILLISECONDS.sleep(1000);
                 } catch (InterruptedException e) {
@@ -360,7 +357,7 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
 
         @Path("/wsEndpintThree")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointThreeReplyToAll(String name, WSMessageReply reply) {
+        public void wsEndpointThreeReplyToAll(String name, WSResponse reply) {
             replyToAllAsync(name + "-3", reply);
             replyToAllAsync(name + "-4", reply);
             replyToAllAsync(name + "-5", reply);
@@ -372,24 +369,24 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
 
         @Path("/wsEndpintFour")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointThreeReplyToAllTwo(String name, WSMessageReply reply) {
+        public void wsEndpointThreeReplyToAllTwo(String name, WSResponse reply) {
             replyToAllAsync(name + "-3", reply);
             System.out.println("wsEndpointThreeReplyToAllTwo-4: " + name + "   :::" + this);
         }
 
         @Path("/hello")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointHello(String name, WSMessageReply reply) {
+        public void wsEndpointHello(String name, WSResponse reply) {
 
-            reply.reply(name + "-2");
+            reply.reply(() -> name + "-2");
             System.out.println("wsEndpointHello-1: " + name + "   :::" + this);
         }
 
         @Path("/asyncReply")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointAsyncReply(String name, WSMessageReply reply) {
+        public void wsEndpointAsyncReply(String name, WSResponse reply) {
 
-            reply.replyAsync(() -> name + "-2");
+            reply.reply(() -> name + "-2");
             System.out.println("wsEndpointAsyncReply-1: " + name + "   :::" + this);
         }
     }

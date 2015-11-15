@@ -254,20 +254,20 @@ public class ServiceDiscoveryTests extends VertxTestBase {
     public class WsServiceOne extends ServiceVerticle {
         @Path("/wsEndpointOne")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointOne(String name, WSMessageReply reply) {
-            reply.reply(name);
+        public void wsEndpointOne(String name, WSResponse reply) {
+            reply.reply(()->name);
         }
 
         @Path("/wsEndpointTwo")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointTwo(String name, WSMessageReply reply) {
+        public void wsEndpointTwo(String name, WSResponse reply) {
             final ServiceDiscovery dicovery = ServiceDiscovery.getInstance(this.getVertx());
             dicovery.service(SERVICE_REST_GET2, (serviceResult) -> {
                 if (serviceResult.succeeded()) {
                     ServiceInfo si = serviceResult.getServiceInfo();
                     si.operation("/wsServiceTwoTwo", operation -> operation.getOperation().websocketConnection(ws -> {
                         ws.handler(data -> {
-                            reply.reply(new String(data.getBytes()) + "-" + "wsEndpointTwo");
+                            reply.reply(()->new String(data.getBytes()) + "-" + "wsEndpointTwo");
                             ws.close();
                         });
                         ws.writeBinaryMessage(Buffer.buffer(name));
@@ -280,7 +280,7 @@ public class ServiceDiscoveryTests extends VertxTestBase {
         @Path("/wsEndpointThree")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void wsEndpointThree(final PersonOne p1, WSMessageReply reply) {
+        public void wsEndpointThree(final PersonOne p1, WSResponse reply) {
 
             final ServiceDiscovery dicovery = ServiceDiscovery.getInstance(this.getVertx());
             dicovery.service(SERVICE_REST_GET2, (serviceResult) -> {
@@ -288,7 +288,7 @@ public class ServiceDiscoveryTests extends VertxTestBase {
                     ServiceInfo si = serviceResult.getServiceInfo();
                     si.operation("/wsServiceTwoThree", operation -> operation.getOperation().websocketConnection(ws -> {
                         ws.handler(data -> {
-                            reply.reply(new String(data.getBytes()));
+                            reply.reply(()->new String(data.getBytes()));
                             ws.close();
                         });
                         Gson gg = new Gson();
@@ -305,30 +305,30 @@ public class ServiceDiscoveryTests extends VertxTestBase {
     public class WsServiceTwo extends ServiceVerticle {
         @Path("/wsServiceTwoOne")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointOne(String name, WSMessageReply reply) {
+        public void wsEndpointOne(String name, WSResponse reply) {
 
         }
 
         @Path("/wsServiceTwoTwo")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointTwo(String name, WSMessageReply reply) {
+        public void wsEndpointTwo(String name, WSResponse reply) {
 
-            reply.reply(name + "-" + "wsServiceTwoTwo");
+            reply.reply(()->name + "-" + "wsServiceTwoTwo");
         }
 
         @Path("/wsServiceTwoThree")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void wsEndpointThree(PersonOneX p2, WSMessageReply reply) {
+        public void wsEndpointThree(PersonOneX p2, WSResponse reply) {
             Gson gg = new Gson();
-            reply.reply(gg.toJson(new PersonOne(p2.getName() + "_wsServiceTwoThree", p2.getLastname())));
+            reply.reply(()->gg.toJson(new PersonOne(p2.getName() + "_wsServiceTwoThree", p2.getLastname())));
             System.out.println("wsServiceTwoThree-2: " + p2 + "   :::" + this);
         }
 
         @Path("/wsServiceTwoFour")
         @OperationType(Type.WEBSOCKET)
         @Consumes("application/json")
-        public void wsEndpointFour(PersonOneX p2, WSMessageReply reply) {
+        public void wsEndpointFour(PersonOneX p2, WSResponse reply) {
 
 
             System.out.println("wsServiceTwoFour-2: " + name + "   :::" + this);

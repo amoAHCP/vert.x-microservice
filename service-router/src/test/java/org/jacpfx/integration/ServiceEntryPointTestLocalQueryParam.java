@@ -3,16 +3,17 @@ package org.jacpfx.integration;
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Handler;
 import io.vertx.core.Vertx;
-import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.HttpClient;
 import io.vertx.core.http.HttpClientOptions;
 import io.vertx.core.http.HttpClientRequest;
 import io.vertx.core.http.HttpClientResponse;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
+import io.vertx.ext.web.RoutingContext;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
 import org.jacpfx.common.OperationType;
+import org.jacpfx.common.Selfhosted;
 import org.jacpfx.common.Type;
 import org.jacpfx.vertx.services.ServiceVerticle;
 import org.junit.Assert;
@@ -25,11 +26,11 @@ import java.util.concurrent.CountDownLatch;
 /**
  * Created by amo on 13.11.14.
  */
-public class ServiceEntryPointTestQueryParam extends VertxTestBase {
+public class ServiceEntryPointTestLocalQueryParam extends VertxTestBase {
     private final static int MAX_RESPONSE_ELEMENTS = 4;
     public static final String SERVICE_REST_GET = "/wsService";
     private static final String HOST="localhost";
-    public static final int PORT = 8080;
+    public static final int PORT = 9090;
 
     protected int getNumNodes() {
         return 1;
@@ -128,23 +129,22 @@ public class ServiceEntryPointTestQueryParam extends VertxTestBase {
 
 
     @ApplicationPath(SERVICE_REST_GET)
+    @Selfhosted(port = PORT)
     public class WsServiceOne extends ServiceVerticle {
 
         @Path("/testSimpleQueryParam")
         @OperationType(Type.REST_GET)
         @Consumes("application/json")
-        public void testSimpleString(@QueryParam("name")String name, final Message message) {
-            message.reply(name);
+        public void testSimpleString(@QueryParam("name")String name, final RoutingContext routingContext) {
+            routingContext.response().end(name);
         }
 
         @Path("/testComplexQueryParam")
         @OperationType(Type.REST_GET)
-        public void testSimpleObjectBySerialisation(@QueryParam("name")String name,@QueryParam("lastName")String lastName, final Message message) {
-            message.reply(name + lastName);
+        public void testSimpleObjectBySerialisation(@QueryParam("name")String name,@QueryParam("lastName")String lastName, final RoutingContext routingContext) {
+            routingContext.response().end(name + lastName);
         }
 
-
-        // TODO add POST Tests!
 
 
     }

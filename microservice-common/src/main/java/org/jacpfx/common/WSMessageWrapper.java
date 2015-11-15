@@ -9,10 +9,10 @@ public class WSMessageWrapper implements Serializable{
 
     private final Serializable body;
     private final Class<?> bodyType;
-    private final WSReply replyeType;
+    private final WSResponseType replyeType;
     private final WSEndpoint endpoint;
 
-    public WSMessageWrapper(final WSEndpoint endpoint,Serializable body,Class<?> bodyType,WSReply replyeType) {
+    public WSMessageWrapper(final WSEndpoint endpoint,Serializable body,Class<?> bodyType,WSResponseType replyeType) {
          this.body = body;
         this.bodyType = bodyType;
         this.replyeType = replyeType;
@@ -27,7 +27,7 @@ public class WSMessageWrapper implements Serializable{
         return bodyType;
     }
 
-    public WSReply getReplyeType() {
+    public WSResponseType getReplyeType() {
         return replyeType;
     }
 

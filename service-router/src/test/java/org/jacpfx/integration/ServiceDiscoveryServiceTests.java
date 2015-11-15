@@ -9,10 +9,7 @@ import io.vertx.core.json.JsonObject;
 import io.vertx.core.spi.cluster.ClusterManager;
 import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
-import org.jacpfx.common.WSMessageReply;
-import org.jacpfx.common.OperationType;
-import org.jacpfx.common.ServiceInfo;
-import org.jacpfx.common.Type;
+import org.jacpfx.common.*;
 import org.jacpfx.vertx.registry.ServiceDiscovery;
 import org.jacpfx.vertx.services.ServiceVerticle;
 import org.junit.Before;
@@ -234,13 +231,14 @@ public class ServiceDiscoveryServiceTests extends VertxTestBase {
     public class WsServiceOne extends ServiceVerticle {
         @Path("/wsEndpointOne")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointOne(String name, WSMessageReply reply) {
+        public void wsEndpointOne(String name, WSResponse reply) {
 
         }
 
         @Path("/wsEndpointTwo")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointTwo(String name, WSMessageReply reply) {
+        public void wsEndpointTwo(String name, WSResponse
+                reply) {
 
 
             System.out.println("wsEndpointTwo-2: " + name + "   :::" + this);
@@ -261,13 +259,13 @@ public class ServiceDiscoveryServiceTests extends VertxTestBase {
     public class WsServiceTwo extends ServiceVerticle {
         @Path("/wsServiceTwoOne")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointOne(String name, WSMessageReply reply) {
+        public void wsEndpointOne(String name, WSResponse reply) {
 
         }
 
         @Path("/wsServiceTwoTwo")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointTwo(String name, WSMessageReply reply) {
+        public void wsEndpointTwo(String name, WSResponse reply) {
 
 
             System.out.println("wsEndpointTwo-2: " + name + "   :::" + this);

@@ -77,8 +77,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     private void registerWSEventbusHandler() {
         String localReply = getConfig().getString("wsReplyPath", GlobalKeyHolder.WS_REPLY);
         String replyToAll = getConfig().getString("wsReplyToAllPath", GlobalKeyHolder.WS_REPLY_TO_ALL);
-        String replyToAllButSender = "";
-        vertx.eventBus().consumer(localReply+serviceName(), (Handler<Message<byte[]>>) wsHandler::replyToWSCaller);
+        vertx.eventBus().consumer(localReply + serviceName(), (Handler<Message<byte[]>>) wsHandler::replyToWSCaller);
         vertx.eventBus().consumer(replyToAll + serviceName(), (Handler<Message<byte[]>>) wsHandler::replyToAllWS);
         // TODO vertx.eventBus().consumer(wsReplyToAllButSenderPath, (Handler<Message<byte[]>>) wsHandler::replyToAllWS);
     }
@@ -92,7 +91,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     }
 
     private void updateConfiguration() {
-        getConfig().put("selfhosted",true);
+        getConfig().put("selfhosted", true);
         getConfig().put("selfhosted-host", serviceName());
     }
 
@@ -119,15 +118,15 @@ public abstract class ServiceVerticle extends AbstractVerticle {
             logDebug("connect socket to path: " + serverSocket.path());
             serverSocket.pause();
             serverSocket.exceptionHandler(ex -> {
-                //TODO
+                //TODO  move definition to sendToWSService and notify method about the status
                 ex.printStackTrace();
             });
             serverSocket.drainHandler(drain -> {
-                //TODO
+                //TODO  move definition to sendToWSService and notify method about the status
                 log("drain");
             });
             serverSocket.endHandler(end -> {
-                //TODO
+                //TODO  move definition to sendToWSService and notify method about the status
                 log("end");
             });
             serverSocket.closeHandler(close -> {
@@ -254,12 +253,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
                 // TODO extract to method
 
-                router.get(url).handler(routingContext -> {
-                    getParameterEntity(routingContext.request().params()).getAll().forEach(elem -> {
-                        System.out.println("--> " + elem.getName() + " : " + elem.getValue());
-                    });
-                    genericLocalRESTHandler(routingContext,method);
-                });
+                router.get(url).handler(routingContext -> genericLocalRESTHandler(routingContext,method));
                 vertx.eventBus().consumer(url, handler -> genericRESTHandler(handler, method));
                 break;
             case WEBSOCKET:
@@ -331,8 +325,8 @@ public abstract class ServiceVerticle extends AbstractVerticle {
     private List<String> getWSParameter(Method method) {
         final Class<?>[] parameterTypes = method.getParameterTypes();
         // TODO, instead of returning the class names of the parameter return a json representation if methods @Consumes annotation defines application/json. Be aware of String, Integer....
-        final List<Class> classes = Stream.of(parameterTypes).filter(c -> !c.equals(WSMessageReply.class)).collect(Collectors.toList());
-        if (classes.size() > 1) throw new IllegalArgumentException("only one parameter is allowed");
+        final List<Class> classes = Stream.of(parameterTypes).filter(c -> !c.equals(WSResponse.class)).collect(Collectors.toList());
+        if (classes.size() > 1) throw new IllegalArgumentException("only one parameter is allowed -- the message body -- and/or the WSResponse");
         return classes.stream().map(Class::getName).collect(Collectors.toList());
     }
 
@@ -405,10 +399,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                     response.end(serializeToJSON(replyValue));
                 }
             }
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-            response.setStatusCode(200).write(e.getLocalizedMessage());
-        } catch (InvocationTargetException e) {
+        } catch (IllegalAccessException | InvocationTargetException e) {
             e.printStackTrace();
             response.setStatusCode(200).write(e.getLocalizedMessage());
         }
@@ -430,10 +421,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
                     m.reply(serializeToJSON(replyValue));
                 }
             }
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-            m.fail(200, e.getMessage());
-        } catch (InvocationTargetException e) {
+        } catch (IllegalAccessException | InvocationTargetException e) {
             e.printStackTrace();
             m.fail(200, e.getMessage());
         }
@@ -460,7 +448,15 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
     private void genericVoidMethodInvocation(Message handler, Method method, Supplier<Object[]> supplier) {
         try {
-            method.invoke(this, supplier.get());
+            final Object returnValue = method.invoke(this, supplier.get());
+            if(returnValue!=null){
+                if(returnValue.getClass().isAssignableFrom(WSResponse.class)){
+                    final WSResponse responseHandler = (WSResponse) returnValue;
+                    final WSDataWrapper wrapper = getWSDataWrapper(handler);
+                    responseHandler.buildAndSend(wrapper.getEndpoint(), this.vertx.eventBus(), this.getConfig());
+                }
+                // TODO check for other Responses
+            }
         } catch (IllegalAccessException e) {
             e.printStackTrace();
             handler.fail(200, e.getMessage());
@@ -519,8 +515,8 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         final Consumes consumes = method.getDeclaredAnnotation(Consumes.class);
         int i = 0;
         for (java.lang.reflect.Parameter p : parameters) {
-            if (p.getType().equals(WSMessageReply.class)) {
-                parameterResult[i] = new WSMessageReply(wrapper.getEndpoint(), this.vertx.eventBus(), this.getConfig());
+            if (p.getType().equals(WSResponse.class)) {
+                parameterResult[i] = new WSResponse(wrapper.getEndpoint(), this.vertx.eventBus(), this.getConfig());
             } else {
                 putTypedWSParameter(consumes, parameterResult, p, i, wrapper.getData());
             }
@@ -583,9 +579,19 @@ public abstract class ServiceVerticle extends AbstractVerticle {
             if (parameterAnnotation.length > 0) {
                 // check only first parameter annotation as only one is allowed
                 final Annotation annotation = parameterAnnotation[0];
-                putQueryParameter(parameters, i, annotation, params);
-                putPathParameter(parameters, i, annotation, params);
-                putFormParameter(parameters, i, annotation, params);
+                if(QueryParam.class.isAssignableFrom(annotation.getClass())){
+                    putQueryParameter(parameters, i, annotation, params);
+                    i++;
+                    continue;
+                }
+                if (PathParam.class.isAssignableFrom(annotation.getClass())) {
+                    putPathParameter(parameters, i, annotation, params);
+                    i++;
+                    continue;
+                }
+                if (FormParam.class.isAssignableFrom(annotation.getClass())) {
+                    putFormParameter(parameters, i, annotation, params);
+                }
             } else {
                 final Class typeClass = parameterTypes[i];
                 if (typeClass.isAssignableFrom(context.getClass())) {
@@ -611,9 +617,7 @@ public abstract class ServiceVerticle extends AbstractVerticle {
         Parameter<String> params = null;
         try {
             params = (Parameter<String>) Serializer.deserialize(m.body());
-        } catch (IOException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
         return params;
@@ -621,21 +625,15 @@ public abstract class ServiceVerticle extends AbstractVerticle {
 
 
     private void putQueryParameter(Object[] parameters, int counter, Annotation annotation, final Parameter<String> params) {
-        if (QueryParam.class.isAssignableFrom(annotation.getClass())) {
             parameters[counter] = (params.getValue(QueryParam.class.cast(annotation).value()));
-        }
     }
 
     private void putPathParameter(Object[] parameters, int counter, Annotation annotation, final Parameter<String> params) {
-        if (PathParam.class.isAssignableFrom(annotation.getClass())) {
             parameters[counter] = (params.getValue(PathParam.class.cast(annotation).value()));
-        }
     }
 
     private void putFormParameter(Object[] parameters, int counter, Annotation annotation, final Parameter<String> params) {
-        if (FormParam.class.isAssignableFrom(annotation.getClass())) {
             parameters[counter] = (params.getValue(FormParam.class.cast(annotation).value()));
-        }
     }
 
     private void putTypedEBParameter(final Consumes consumes, final Object[] parameterResult, final java.lang.reflect.Parameter p, final int counter, final byte[] myParameter) {
