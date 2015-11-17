@@ -11,8 +11,6 @@ import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Type;
-import org.jacpfx.common.WSEndpoint;
-import org.jacpfx.common.WSResponse;
 import org.jacpfx.vertx.services.VertxServiceEndpoint;
 import org.jacpfx.vertx.websocket.response.WSHandler;
 import org.junit.Before;
@@ -308,13 +306,13 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
     public class WsServiceOne extends VertxServiceEndpoint {
         @Path("/wsEndpintOne")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointOne(String name, WSResponse reply) {
+        public void wsEndpointOne(String name, WSHandler reply) {
 
         }
 
         @Path("/wsEndpintTwo")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointTwo(String name, WSResponse reply) {
+        public void wsEndpointTwo(String name, WSHandler reply) {
 
             replyAsyncTwo(name + "-3", reply);
             replyAsyncTwo(name + "-4", reply);
@@ -323,31 +321,31 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
             System.out.println("wsEndpointTwo-2: " + name + "   :::" + this);
         }
 
-        private void replyAsyncTwo(String name, WSResponse reply) {
-            reply.reply(() -> {
+        private void replyAsyncTwo(String name, WSHandler reply) {
+            reply.response().async().toCaller().stringResponse(() -> {
                 try {
                     TimeUnit.MILLISECONDS.sleep(1000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
                 return name + Thread.currentThread();
-            });
+            }).execute();
         }
 
-        private void replyToAllAsync(String name, WSResponse reply) {
-            reply.replyToAll(() -> {
+        private void replyToAllAsync(String name, WSHandler reply) {
+            reply.response().async().toAll().stringResponse(() -> {
                 try {
                     TimeUnit.MILLISECONDS.sleep(1000);
                 } catch (InterruptedException e) {
                     e.printStackTrace();
                 }
                 return name + Thread.currentThread();
-            });
+            }).execute();
         }
 
         @Path("/wsEndpintThree")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointThreeReplyToAll(String name, WSResponse reply) {
+        public void wsEndpointThreeReplyToAll(String name, WSHandler reply) {
             replyToAllAsync(name + "-3", reply);
             replyToAllAsync(name + "-4", reply);
             replyToAllAsync(name + "-5", reply);
@@ -359,38 +357,35 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
 
         @Path("/wsEndpintFour")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointThreeReplyToAllTwo(String name, WSResponse reply) {
+        public void wsEndpointThreeReplyToAllTwo(String name, WSHandler reply) {
             replyToAllAsync(name + "-3", reply);
-            System.out.println("wsEndpointThreeReplyToAllTwo-4: " + name + "   :::" + this);
+            System.out.println("+++ wsEndpointThreeReplyToAllTwo-4: " + name + "   :::" + this);
         }
 
         @Path("/hello")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointHello(String name, WSResponse reply) {
+        public void wsEndpointHello(String name, WSHandler reply) {
 
-            reply.reply(() -> name + "-2");
+
+            reply.
+                    response().
+                    // async().
+                    toCaller().
+                    stringResponse(() -> name + "-2").
+                    execute();
             System.out.println("wsEndpointHello-1: " + name + "   :::" + this);
         }
 
-        // IDEA
-        public class WSByteResponse {
-            // add method annotation for Serializer class
-
-            public <T> T getBody(Class<T> type) {
-                return null;
-            }
-
-            public WSEndpoint getEndpoint() {
-                return null;
-            }
-        }
 
         @Path("/asyncReply")
         @OperationType(Type.WEBSOCKET)
+        // @Encoder
+        // @Decoder
         public void wsEndpointAsyncReply(String name, WSHandler reply) {
 
             reply.
                     response().
+                    // async().
                     toCaller().
                     stringResponse(() -> name + "-2").
                     execute();

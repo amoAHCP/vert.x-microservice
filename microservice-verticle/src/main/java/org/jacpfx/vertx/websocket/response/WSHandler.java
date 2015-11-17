@@ -3,10 +3,12 @@ package org.jacpfx.vertx.websocket.response;
 import io.vertx.core.eventbus.EventBus;
 import org.jacpfx.common.Serializer;
 import org.jacpfx.common.WSEndpoint;
+import org.jacpfx.vertx.websocket.util.WSRegistry;
 
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Supplier;
@@ -18,10 +20,12 @@ public class WSHandler {
     private final static ExecutorService EXECUTOR = Executors.newCachedThreadPool();
     private final WSEndpoint endpoint;
     private final EventBus bus;
+    private final WSRegistry registry;
 
-    public WSHandler(WSEndpoint endpoint, EventBus bus) {
+    public WSHandler(WSRegistry registry,WSEndpoint endpoint, EventBus bus) {
         this.endpoint = endpoint;
         this.bus = bus;
+        this.registry = registry;
     }
 
     public TargetType response() {
@@ -105,56 +109,78 @@ public class WSHandler {
         }
 
         public void execute() {
-             if(async){
+            if (async) {
+                Optional.ofNullable(byteSupplier).
+                        ifPresent(supplier -> CompletableFuture.supplyAsync(byteSupplier, EXECUTOR).thenAccept(this::sendBinary));
+                Optional.ofNullable(stringSupplier).
+                        ifPresent(supplier -> CompletableFuture.supplyAsync(stringSupplier, EXECUTOR).thenAccept(this::sendText));
+                Optional.ofNullable(objectSupplier).
+                        ifPresent(supplier -> CompletableFuture.supplyAsync(objectSupplier, EXECUTOR).thenAccept(value -> {
+                            try {
+                                sendBinary(Serializer.serialize(value));
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
 
-             } else {
-                 if(byteSupplier!=null) {
-                     // TODO check for exception, think about @OnError method execution
-                     Optional.ofNullable(byteSupplier.get()).ifPresent(value-> {
-                         sendBinary(value);
-                     });
-                 } else if(stringSupplier!=null){
-                     // TODO check for exception, think about @OnError method execution
-                     Optional.ofNullable(stringSupplier.get()).ifPresent(value-> {
-                         sendText(value);
-                     });
-                 } else if(objectSupplier!=null){
-                     // TODO check for exception, think about @OnError method execution
-                     Optional.ofNullable(objectSupplier.get()).ifPresent(value-> {
-                         try {
-                             sendBinary(Serializer.serialize(value));
-                         } catch (IOException e) {
-                             e.printStackTrace();
-                         }
+                        }));
 
-                     });
-                 }
+            } else {
+                // TODO check for exception, think about @OnError method execution
+                Optional.ofNullable(byteSupplier).
+                        ifPresent(supplier -> Optional.ofNullable(supplier.get()).ifPresent(this::sendBinary));
+                // TODO check for exception, think about @OnError method execution
+                Optional.ofNullable(stringSupplier).
+                        ifPresent(supplier -> Optional.ofNullable(supplier.get()).ifPresent(this::sendText));
+                // TODO check for exception, think about @OnError method execution
+                Optional.ofNullable(objectSupplier).
+                        ifPresent(supplier -> Optional.ofNullable(supplier.get()).ifPresent(value -> {
+                            try {
+                                sendBinary(Serializer.serialize(value));
+                            } catch (IOException e) {
+                                e.printStackTrace();
+                            }
 
-             }
+                        }));
+
+            }
         }
 
         private void sendText(String value) {
-            switch (commType){
+            switch (commType) {
 
                 case ALL:
+                    registry.findEndpointsAndExecute(endpoint, match -> {
+                        System.out.println("MATCH ALL STRING");
+                        bus.send(match.getTextHandlerId(), value);
+                    });
                     break;
                 case ALL_BUT_CALLER:
+                    registry.findEndpointsAndExecute(endpoint, match -> {
+                        if (!endpoint.equals(match)) bus.send(match.getTextHandlerId(), value);
+                    });
                     break;
                 case CALLER:
-                    bus.send(endpoint.getTextHandlerId(),value);
+                    bus.send(endpoint.getTextHandlerId(), value);
                     break;
             }
         }
 
         private void sendBinary(byte[] value) {
-            switch (commType){
+            switch (commType) {
 
                 case ALL:
+                    registry.findEndpointsAndExecute(endpoint, match -> {
+                        System.out.println("MATCH ALL BINARY");
+                        bus.send(match.getBinaryHandlerId(), value);
+                    });
                     break;
                 case ALL_BUT_CALLER:
+                    registry.findEndpointsAndExecute(endpoint, match -> {
+                        if (!endpoint.equals(match)) bus.send(match.getTextHandlerId(), value);
+                    });
                     break;
                 case CALLER:
-                    bus.send(endpoint.getBinaryHandlerId(),value);
+                    bus.send(endpoint.getBinaryHandlerId(), value);
                     break;
             }
         }

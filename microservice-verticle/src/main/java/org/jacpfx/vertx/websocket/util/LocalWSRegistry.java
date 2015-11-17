@@ -12,15 +12,15 @@ import org.jacpfx.common.WSEndpointHolder;
 import org.jacpfx.common.handler.WSLocalHandler;
 import org.jacpfx.common.handler.WebSocketHandler;
 
+import java.util.Optional;
 import java.util.function.Consumer;
 
 /**
  * Created by Andy Moncsek on 15.11.15.
  */
-public class LocalWSRegistry implements WebSocketHandler {
+public class LocalWSRegistry implements WebSocketHandler, WSRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(WSLocalHandler.class);
-
 
 
     private final Vertx vertx;
@@ -34,11 +34,41 @@ public class LocalWSRegistry implements WebSocketHandler {
     public void findRouteToWSServiceAndRegister(ServerWebSocket serverSocket) {
 
 
-
-
     }
 
-    public void registerAndExecute(ServerWebSocket serverSocket, Consumer<WSEndpoint> onFinishRegistration){
+    @Override
+    public void removeAndExecuteOnClose(ServerWebSocket serverSocket, Runnable onFinishRemove) {
+        final SharedData sharedData = this.vertx.sharedData();
+        final LocalMap<String, byte[]> wsRegistry = sharedData.getLocalMap(WS_REGISTRY);
+        Optional.ofNullable(getWSEndpointHolderFromSharedData(wsRegistry)).
+                ifPresent(endpointHolder -> endpointHolder.
+                        getAll().
+                        stream().
+                        filter(endpoint -> endpoint.getBinaryHandlerId().equals(serverSocket.binaryHandlerID()) && endpoint.getTextHandlerId().equals(serverSocket.textHandlerID())).
+                        findFirst().
+                        ifPresent(endpoint -> {
+                            endpointHolder.remove(endpoint);
+                            onFinishRemove.run();
+
+                        }));
+    }
+
+    @Override
+    public void findEndpointsAndExecute(WSEndpoint currentEndpoint, Consumer<WSEndpoint> onFinishRegistration) {
+        System.out.println("wsRegistrycdcc:");
+        final SharedData sharedData = this.vertx.sharedData();
+        final LocalMap<String, byte[]> wsRegistry = sharedData.getLocalMap(WS_REGISTRY);
+        System.out.println("wsRegistry:"+wsRegistry);
+        Optional.ofNullable(getWSEndpointHolderFromSharedData(wsRegistry)).
+                ifPresent(endpointHolder -> endpointHolder.
+                        getAll().
+                        stream().
+                        filter(endpoint -> endpoint.getUrl().equals(currentEndpoint.getUrl())).
+                        forEach(sameEndpoint -> onFinishRegistration.accept(sameEndpoint)));
+    }
+
+    @Override
+    public void registerAndExecute(ServerWebSocket serverSocket, Consumer<WSEndpoint> onFinishRegistration) {
         final SharedData sharedData = this.vertx.sharedData();
         final LocalMap<String, byte[]> wsRegistry = sharedData.getLocalMap(WS_REGISTRY);
         final WSEndpointHolder holder = getWSEndpointHolderFromSharedData(wsRegistry);
@@ -86,7 +116,6 @@ public class LocalWSRegistry implements WebSocketHandler {
     public void replyToAllWS(Message<byte[]> message) {
 
     }
-
 
 
 }

@@ -13,9 +13,7 @@ import io.vertx.core.http.HttpServerOptions;
 import io.vertx.core.json.JsonObject;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
-import io.vertx.ext.web.Router;
 import org.jacpfx.common.*;
-import org.jacpfx.common.handler.WSClusterHandler;
 import org.jacpfx.common.spi.GSonConverter;
 import org.jacpfx.common.spi.JSONConverter;
 import org.jacpfx.vertx.registry.ServiceDiscovery;
@@ -23,6 +21,7 @@ import org.jacpfx.vertx.websocket.response.WSByteResponse;
 import org.jacpfx.vertx.websocket.response.WSHandler;
 import org.jacpfx.vertx.websocket.response.WSStringResponse;
 import org.jacpfx.vertx.websocket.util.LocalWSRegistry;
+import org.jacpfx.vertx.websocket.util.WSRegistry;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.Path;
@@ -54,9 +53,8 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
     private static final String HOST_PREFIX = "";
     protected ServiceDiscovery dicovery;
     private boolean clustered;
-    private org.jacpfx.common.handler.WebSocketHandler wsHandler;
+    private WSRegistry wsHandler;
     private int port = 0;
-    private Router router;
 
 
     @Override
@@ -93,11 +91,9 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
     }
 
 
-
-
     private void initWSHandlerInstance() {
         if (clustered) {
-            wsHandler = new WSClusterHandler(this.vertx);
+            wsHandler = null;
         } else {
             wsHandler = new LocalWSRegistry(this.vertx);
         }
@@ -126,27 +122,10 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
                 return;
             }
             logDebug("connect socket to path: " + serverSocket.path());
-            serverSocket.pause();
-            serverSocket.exceptionHandler(ex -> {
-                //TODO  move definition to sendToWSService and notify method about the status
-                ex.printStackTrace();
-            });
-            serverSocket.drainHandler(drain -> {
-                //TODO  move definition to sendToWSService and notify method about the status
-                log("drain");
-            });
-            serverSocket.endHandler(end -> {
-                //TODO  move definition to sendToWSService and notify method about the status
-                log("end");
-            });
-            serverSocket.closeHandler(close -> {
-                // wsHandler.findRouteSocketInRegistryAndRemove(serverSocket);
-                log("close");
-            });
-
             final String path = serverSocket.path();
             final String sName = serviceName();
             if (path.startsWith(sName)) {
+                serverSocket.pause();
                 final String methodName = path.replace(sName, "");
                 final Method[] declaredMethods = this.getClass().getDeclaredMethods();
                 Stream.of(declaredMethods).parallel().
@@ -154,9 +133,9 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
                         filter(method1 -> method1.isAnnotationPresent(Path.class) && method1.getAnnotation(Path.class).value().equalsIgnoreCase(methodName)).
                         findFirst().
                         ifPresent(wsMethod -> {
-                            if (wsHandler instanceof LocalWSRegistry) {
+                            if (wsHandler instanceof WSRegistry) {
                                 // only for testing
-                                LocalWSRegistry.class.cast(wsHandler).registerAndExecute(serverSocket, endpoint -> {
+                                WSRegistry.class.cast(wsHandler).registerAndExecute(serverSocket, endpoint -> {
                                     log("register:+ " + endpoint.getUrl());
 
                                     serverSocket.handler(handler -> {
@@ -166,6 +145,23 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
 
                                             }
                                     );
+                                    serverSocket.exceptionHandler(ex -> {
+                                        //TODO  move definition to sendToWSService and notify method about the status
+                                        ex.printStackTrace();
+                                    });
+                                    serverSocket.drainHandler(drain -> {
+                                        //TODO  move definition to sendToWSService and notify method about the status
+                                        log("drain");
+                                    });
+                                    serverSocket.endHandler(end -> {
+                                        //TODO  move definition to sendToWSService and notify method about the status
+                                        log("end");
+                                    });
+                                    serverSocket.closeHandler(close -> {
+                                        // wsHandler.findRouteSocketInRegistryAndRemove(serverSocket);
+                                        log("close");
+                                    });
+
                                     serverSocket.resume();
                                 });
                             }
@@ -177,10 +173,10 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
     }
 
     private void invokeWSMethod(byte[] payload, Method method, WSEndpoint endpoint) {
-        genericMethodInvocation(method, endpoint, () -> invokeWSParameters(payload, method, endpoint));
+        genericMethodInvocation(method, () -> invokeWSParameters(payload, method, endpoint));
     }
 
-    private void genericMethodInvocation(Method method, WSEndpoint endpoint, Supplier<Object[]> supplier) {
+    private void genericMethodInvocation(Method method, Supplier<Object[]> supplier) {
         try {
             final Object returnValue = method.invoke(this, supplier.get());
             if (returnValue != null) {
@@ -205,12 +201,15 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
             // TODO remove all but WSHandler and else
             if (p.getType().equals(WSResponse.class)) {
                 parameterResult[i] = new WSResponse(endpoint, this.vertx.eventBus(), this.getConfig());
-            }if (p.getType().equals(WSByteResponse.class)) {
+            }
+            if (p.getType().equals(WSByteResponse.class)) {
                 parameterResult[i] = new WSByteResponse(endpoint, this.vertx.eventBus());
-            }if (p.getType().equals(WSStringResponse.class)) {
+            }
+            if (p.getType().equals(WSStringResponse.class)) {
                 parameterResult[i] = new WSStringResponse(endpoint, this.vertx.eventBus());
-            }if (p.getType().equals(WSHandler.class)) {
-                parameterResult[i] = new WSHandler(endpoint, this.vertx.eventBus());
+            }
+            if (p.getType().equals(WSHandler.class)) {
+                parameterResult[i] = new WSHandler((WSRegistry) wsHandler,endpoint, this.vertx.eventBus());
             } else {
                 putTypedWSParameter(consumes, parameterResult, p, i, m);
             }
@@ -281,10 +280,6 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
     }
 
 
-
-
-
-
     /**
      * Retrieving a list (note only one parameter is allowed) of all possible ws method paramaters
      *
@@ -296,20 +291,14 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
         // TODO, instead of returning the class names of the parameter return a json representation if methods @Consumes annotation defines application/json. Be aware of String, Integer....
         final List<Class> classes = Stream.of(parameterTypes).
                 filter(c -> !c.equals(WSResponse.class)).
-                filter(c1-> !c1.equals(WSByteResponse.class)).
-                filter(c2-> !c2.equals(WSStringResponse.class)).
-                filter(c3-> !c3.equals(WSHandler.class)).  // TODO this should be the only one
+                filter(c1 -> !c1.equals(WSByteResponse.class)).
+                filter(c2 -> !c2.equals(WSStringResponse.class)).
+                filter(c3 -> !c3.equals(WSHandler.class)).  // TODO this should be the only one
                 collect(Collectors.toList());
         if (classes.size() > 1)
             throw new IllegalArgumentException("only one parameter is allowed -- the message body -- and/or the WSResponse");
         return classes.stream().map(Class::getName).collect(Collectors.toList());
     }
-
-
-
-
-
-
 
 
     private void putTypedWSParameter(final Consumes consumes, final Object[] parameterResult, final java.lang.reflect.Parameter p, final int counter, final byte[] myParameter) {
