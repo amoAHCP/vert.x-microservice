@@ -1,4 +1,4 @@
-package org.jacpfx.integration;
+package org.jacpfx;
 
 import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
@@ -11,12 +11,13 @@ import io.vertx.test.core.VertxTestBase;
 import io.vertx.test.fakecluster.FakeClusterManager;
 import org.jacpfx.common.OperationType;
 import org.jacpfx.common.Type;
+import org.jacpfx.common.WSEndpoint;
 import org.jacpfx.common.WSResponse;
-import org.jacpfx.vertx.services.ServiceVerticle;
+import org.jacpfx.vertx.services.VertxServiceEndpoint;
+import org.jacpfx.vertx.websocket.response.WSHandler;
 import org.junit.Before;
 import org.junit.Test;
 
-import javax.ws.rs.ApplicationPath;
 import javax.ws.rs.Path;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -27,10 +28,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 /**
  * Created by Andy Moncsek on 23.04.15.
  */
-public class WSServiceTest extends VertxTestBase {
+public class WSServiceSelfhostedTest extends VertxTestBase {
     private final static int MAX_RESPONSE_ELEMENTS = 4;
     public static final String SERVICE_REST_GET = "/wsService";
-    private static final String HOST="localhost";
+    private static final String HOST = "localhost";
+    public static final int PORT = 9090;
 
     protected int getNumNodes() {
         return 1;
@@ -58,22 +60,13 @@ public class WSServiceTest extends VertxTestBase {
     @Before
     public void startVerticles() throws InterruptedException {
 
-        CountDownLatch latch = new CountDownLatch(1);
+
         CountDownLatch latch2 = new CountDownLatch(1);
         DeploymentOptions options = new DeploymentOptions().setInstances(1);
         options.setConfig(new JsonObject().put("clustered", false).put("host", HOST));
         // Deploy the module - the System property `vertx.modulename` will contain the name of the module so you
         // don't have to hardecode it in your tests
-        getVertx().deployVerticle("org.jacpfx.vertx.entrypoint.ServiceEntryPoint",options, asyncResult -> {
-            // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
-            System.out.println("start entry point: " + asyncResult.succeeded());
-            assertTrue(asyncResult.succeeded());
-            assertNotNull("deploymentID should not be null", asyncResult.result());
-            // If deployed correctly then start the tests!
-            latch.countDown();
 
-        });
-        awaitLatch(latch);
         getVertx().deployVerticle(new WsServiceOne(), options, asyncResult -> {
             // Deployment is asynchronous and this this handler will be called when it's complete (or failed)
             System.out.println("start service: " + asyncResult.succeeded());
@@ -98,7 +91,7 @@ public class WSServiceTest extends VertxTestBase {
     public void simpleConnectAndWrite() throws InterruptedException {
 
 
-        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/hello", ws -> {
+        getClient().websocket(PORT, HOST, SERVICE_REST_GET + "/hello", ws -> {
             long startTime = System.currentTimeMillis();
             ws.handler((data) -> {
                 System.out.println("client data simpleConnectAndWrite:" + new String(data.getBytes()));
@@ -120,7 +113,7 @@ public class WSServiceTest extends VertxTestBase {
     @Test
     public void simpleConnectAndAsyncWrite() throws InterruptedException {
 
-        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/asyncReply", ws -> {
+        getClient().websocket(PORT, HOST, SERVICE_REST_GET + "/asyncReply", ws -> {
             long startTime = System.currentTimeMillis();
             ws.handler((data) -> {
                 System.out.println("client data simpleConnectAndAsyncWrite:" + new String(data.getBytes()));
@@ -145,7 +138,7 @@ public class WSServiceTest extends VertxTestBase {
         CountDownLatch latchMain = new CountDownLatch(2);
         Runnable r = () -> {
 
-            getClient().websocket(8080, HOST, SERVICE_REST_GET + "/hello", ws -> {
+            getClient().websocket(PORT, HOST, SERVICE_REST_GET + "/hello", ws -> {
                 long startTime = System.currentTimeMillis();
                 ws.handler((data) -> {
                     System.out.println("client data simpleConnectOnTwoThreads:" + new String(data.getBytes()));
@@ -167,20 +160,19 @@ public class WSServiceTest extends VertxTestBase {
         latchMain.await();
 
 
-
     }
 
     @Test
     public void simpleConnectOnTenThreads() throws InterruptedException {
-        int counter =100;
+        int counter = 100;
         ExecutorService s = Executors.newFixedThreadPool(counter);
         CountDownLatch latchMain = new CountDownLatch(counter);
 
 
-        for(int i =0; i<=counter; i++) {
+        for (int i = 0; i <= counter; i++) {
             Runnable r = () -> {
 
-                getClient().websocket(8080, HOST, SERVICE_REST_GET + "/hello", ws -> {
+                getClient().websocket(PORT, HOST, SERVICE_REST_GET + "/hello", ws -> {
                     long startTime = System.currentTimeMillis();
                     ws.handler((data) -> {
                         System.out.println("client data simpleConnectOnTenThreads:" + new String(data.getBytes()));
@@ -201,9 +193,7 @@ public class WSServiceTest extends VertxTestBase {
         }
 
 
-
         latchMain.await();
-
 
 
     }
@@ -211,7 +201,7 @@ public class WSServiceTest extends VertxTestBase {
     @Test
     public void simpleMutilpeReply() throws InterruptedException {
         final AtomicInteger counter = new AtomicInteger(0);
-        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/wsEndpintTwo", ws -> {
+        getClient().websocket(PORT, HOST, SERVICE_REST_GET + "/wsEndpintTwo", ws -> {
 
             ws.handler((data) -> {
                 System.out.println("client data simpleMutilpeReply:" + new String(data.getBytes()));
@@ -234,7 +224,7 @@ public class WSServiceTest extends VertxTestBase {
     @Test
     public void simpleMutilpeReplyToAll() throws InterruptedException {
         final AtomicInteger counter = new AtomicInteger(0);
-        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/wsEndpintThree", ws -> {
+        getClient().websocket(PORT, HOST, SERVICE_REST_GET + "/wsEndpintThree", ws -> {
 
             ws.handler((data) -> {
                 System.out.println("client data simpleMutilpeReplyToAll:" + new String(data.getBytes()));
@@ -256,7 +246,7 @@ public class WSServiceTest extends VertxTestBase {
     @Test
     public void simpleMutilpeReplyToAll_1() throws InterruptedException {
         final AtomicInteger counter = new AtomicInteger(0);
-        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/wsEndpintFour", ws -> {
+        getClient().websocket(PORT, HOST, SERVICE_REST_GET + "/wsEndpintFour", ws -> {
 
             ws.handler((data) -> {
                 System.out.println("client data simpleMutilpeReplyToAll_1:" + new String(data.getBytes()));
@@ -277,7 +267,7 @@ public class WSServiceTest extends VertxTestBase {
     public void simpleMutilpeReplyToAllThreaded() throws InterruptedException {
         ExecutorService s = Executors.newFixedThreadPool(10);
         final CountDownLatch latch = new CountDownLatch(2);
-        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/wsEndpintFour", ws -> {
+        getClient().websocket(PORT, HOST, SERVICE_REST_GET + "/wsEndpintFour", ws -> {
 
             ws.handler((data) -> {
                 System.out.println("client data simpleMutilpeReplyToAllThreaded:" + new String(data.getBytes()));
@@ -290,7 +280,7 @@ public class WSServiceTest extends VertxTestBase {
 
         });
 
-        getClient().websocket(8080, HOST, SERVICE_REST_GET + "/wsEndpintFour", ws -> {
+        getClient().websocket(PORT, HOST, SERVICE_REST_GET + "/wsEndpintFour", ws -> {
 
             ws.handler((data) -> {
                 System.out.println("client datasimpleMutilpeReplyToAllThreaded 5.1:" + new String(data.getBytes()));
@@ -314,10 +304,8 @@ public class WSServiceTest extends VertxTestBase {
     }
 
 
-
-
-    @ApplicationPath(SERVICE_REST_GET)
-    public class WsServiceOne extends ServiceVerticle {
+    @org.jacpfx.common.ServiceEndpoint(value = SERVICE_REST_GET, port = PORT)
+    public class WsServiceOne extends VertxServiceEndpoint {
         @Path("/wsEndpintOne")
         @OperationType(Type.WEBSOCKET)
         public void wsEndpointOne(String name, WSResponse reply) {
@@ -331,7 +319,7 @@ public class WSServiceTest extends VertxTestBase {
             replyAsyncTwo(name + "-3", reply);
             replyAsyncTwo(name + "-4", reply);
             replyAsyncTwo(name + "-5", reply);
-            replyAsyncTwo(name + "-6",reply);
+            replyAsyncTwo(name + "-6", reply);
             System.out.println("wsEndpointTwo-2: " + name + "   :::" + this);
         }
 
@@ -384,11 +372,28 @@ public class WSServiceTest extends VertxTestBase {
             System.out.println("wsEndpointHello-1: " + name + "   :::" + this);
         }
 
+        // IDEA
+        public class WSByteResponse {
+            // add method annotation for Serializer class
+
+            public <T> T getBody(Class<T> type) {
+                return null;
+            }
+
+            public WSEndpoint getEndpoint() {
+                return null;
+            }
+        }
+
         @Path("/asyncReply")
         @OperationType(Type.WEBSOCKET)
-        public void wsEndpointAsyncReply(String name, WSResponse reply) {
+        public void wsEndpointAsyncReply(String name, WSHandler reply) {
 
-            reply.reply(() -> name + "-2");
+            reply.
+                    response().
+                    toCaller().
+                    stringResponse(() -> name + "-2").
+                    execute();
             System.out.println("wsEndpointAsyncReply-1: " + name + "   :::" + this);
         }
     }

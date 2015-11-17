@@ -80,6 +80,7 @@ public class WSResponse {
     }
 
     private void replyAsyncExecution(final String url, Supplier<Serializable> execute, WSResponseType to) {
+        // TODO reply NOT to ServiceEntryPoint, but to EndpointAddress itself
         CompletableFuture.supplyAsync(execute, EXECUTOR).
                 thenApplyAsync(val -> serializeResult(val, to)).
                 thenAcceptAsync(serializedResult -> bus.send(url, serializedResult));
