@@ -1,7 +1,6 @@
 package org.jacpfx.vertx.websocket.util;
 
 import io.vertx.core.Vertx;
-import io.vertx.core.eventbus.Message;
 import io.vertx.core.http.ServerWebSocket;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
@@ -10,15 +9,15 @@ import io.vertx.core.shareddata.SharedData;
 import org.jacpfx.common.WSEndpoint;
 import org.jacpfx.common.WSEndpointHolder;
 import org.jacpfx.common.handler.WSLocalHandler;
-import org.jacpfx.common.handler.WebSocketHandler;
 
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Created by Andy Moncsek on 15.11.15.
  */
-public class LocalWSRegistry implements WebSocketHandler, WSRegistry {
+public class LocalWSRegistry implements  WSRegistry {
 
     private static final Logger log = LoggerFactory.getLogger(WSLocalHandler.class);
 
@@ -30,11 +29,7 @@ public class LocalWSRegistry implements WebSocketHandler, WSRegistry {
     }
 
 
-    @Override
-    public void findRouteToWSServiceAndRegister(ServerWebSocket serverSocket) {
 
-
-    }
 
     @Override
     public void removeAndExecuteOnClose(ServerWebSocket serverSocket, Runnable onFinishRemove) {
@@ -48,6 +43,7 @@ public class LocalWSRegistry implements WebSocketHandler, WSRegistry {
                         findFirst().
                         ifPresent(endpoint -> {
                             endpointHolder.remove(endpoint);
+                            wsRegistry.replace(WS_ENDPOINT_HOLDER, serialize(endpointHolder));
                             onFinishRemove.run();
 
                         }));
@@ -55,17 +51,25 @@ public class LocalWSRegistry implements WebSocketHandler, WSRegistry {
 
     @Override
     public void findEndpointsAndExecute(WSEndpoint currentEndpoint, Consumer<WSEndpoint> onFinishRegistration) {
-        System.out.println("wsRegistrycdcc:");
+        findFilterAndExecute(currentEndpoint,(endpoint->true),onFinishRegistration);
+    }
+
+    public void findOtherEndpointsAndExecute(WSEndpoint currentEndpoint, Consumer<WSEndpoint> onFinishRegistration) {
+        findFilterAndExecute(currentEndpoint,(endpoint->!endpoint.equals(currentEndpoint)),onFinishRegistration);
+    }
+
+    private void findFilterAndExecute(WSEndpoint currentEndpoint, Function<WSEndpoint,Boolean> filter,Consumer<WSEndpoint> onFinishRegistration) {
         final SharedData sharedData = this.vertx.sharedData();
         final LocalMap<String, byte[]> wsRegistry = sharedData.getLocalMap(WS_REGISTRY);
-        System.out.println("wsRegistry:"+wsRegistry);
         Optional.ofNullable(getWSEndpointHolderFromSharedData(wsRegistry)).
                 ifPresent(endpointHolder -> endpointHolder.
                         getAll().
                         stream().
+                        filter(endpoint -> filter.apply(endpoint)).
                         filter(endpoint -> endpoint.getUrl().equals(currentEndpoint.getUrl())).
                         forEach(sameEndpoint -> onFinishRegistration.accept(sameEndpoint)));
     }
+
 
     @Override
     public void registerAndExecute(ServerWebSocket serverSocket, Consumer<WSEndpoint> onFinishRegistration) {
@@ -102,20 +106,7 @@ public class LocalWSRegistry implements WebSocketHandler, WSRegistry {
         return null;
     }
 
-    @Override
-    public void findRouteSocketInRegistryAndRemove(ServerWebSocket serverSocket) {
 
-    }
-
-    @Override
-    public void replyToWSCaller(Message<byte[]> message) {
-
-    }
-
-    @Override
-    public void replyToAllWS(Message<byte[]> message) {
-
-    }
 
 
 }

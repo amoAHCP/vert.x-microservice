@@ -181,7 +181,8 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
                         System.out.println("round trip time simpleConnectOnTenThreads: " + (endTime - startTime) + "ms");
                     });
 
-                    ws.writeFrame(new WebSocketFrameImpl("zhello"));
+                   // ws.writeFrame(new WebSocketFrameImpl("zhello"));
+                    ws.writeFinalTextFrame("zhello");
                 });
 
 
@@ -314,10 +315,10 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
         @OperationType(Type.WEBSOCKET)
         public void wsEndpointTwo(String name, WSHandler reply) {
 
-            replyAsyncTwo(name + "-3", reply);
-            replyAsyncTwo(name + "-4", reply);
-            replyAsyncTwo(name + "-5", reply);
-            replyAsyncTwo(name + "-6", reply);
+            replyAsyncTwo(reply.payload().getString() + "-3", reply);
+            replyAsyncTwo(reply.payload().getString() + "-4", reply);
+            replyAsyncTwo(reply.payload().getString() + "-5", reply);
+            replyAsyncTwo(reply.payload().getString() + "-6", reply);
             System.out.println("wsEndpointTwo-2: " + name + "   :::" + this);
         }
 
@@ -346,20 +347,20 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
         @Path("/wsEndpintThree")
         @OperationType(Type.WEBSOCKET)
         public void wsEndpointThreeReplyToAll(String name, WSHandler reply) {
-            replyToAllAsync(name + "-3", reply);
-            replyToAllAsync(name + "-4", reply);
-            replyToAllAsync(name + "-5", reply);
-            replyToAllAsync(name + "-6", reply);
+            replyToAllAsync(reply.payload().getString() + "-3", reply);
+            replyToAllAsync(reply.payload().getString() + "-4", reply);
+            replyToAllAsync(reply.payload().getString() + "-5", reply);
+            replyToAllAsync(reply.payload().getString() + "-6", reply);
 
-            System.out.println("wsEndpointThreeReplyToAll-2: " + name + "   :::" + this);
+            System.out.println("wsEndpointThreeReplyToAll-2: " + reply.payload().getString() + "   :::" + this);
         }
 
 
         @Path("/wsEndpintFour")
         @OperationType(Type.WEBSOCKET)
         public void wsEndpointThreeReplyToAllTwo(String name, WSHandler reply) {
-            replyToAllAsync(name + "-3", reply);
-            System.out.println("+++ wsEndpointThreeReplyToAllTwo-4: " + name + "   :::" + this);
+            replyToAllAsync(reply.payload().getString() + "-3", reply);
+            System.out.println("+++ wsEndpointThreeReplyToAllTwo-4: " + reply.payload().getString() + "   :::" + this);
         }
 
         @Path("/hello")
@@ -371,7 +372,7 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
                     response().
                     // async().
                     toCaller().
-                    stringResponse(() -> name + "-2").
+                    stringResponse(() -> reply.payload().getString() + "-2").
                     execute();
             System.out.println("wsEndpointHello-1: " + name + "   :::" + this);
         }
@@ -387,7 +388,7 @@ public class WSServiceSelfhostedTest extends VertxTestBase {
                     response().
                     // async().
                     toCaller().
-                    stringResponse(() -> name + "-2").
+                    stringResponse(() -> reply.payload().getString() + "-2").
                     execute();
             System.out.println("wsEndpointAsyncReply-1: " + name + "   :::" + this);
         }

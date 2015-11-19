@@ -17,9 +17,7 @@ import org.jacpfx.common.*;
 import org.jacpfx.common.spi.GSonConverter;
 import org.jacpfx.common.spi.JSONConverter;
 import org.jacpfx.vertx.registry.ServiceDiscovery;
-import org.jacpfx.vertx.websocket.response.WSByteResponse;
 import org.jacpfx.vertx.websocket.response.WSHandler;
-import org.jacpfx.vertx.websocket.response.WSStringResponse;
 import org.jacpfx.vertx.websocket.util.LocalWSRegistry;
 import org.jacpfx.vertx.websocket.util.WSRegistry;
 
@@ -191,27 +189,17 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
     }
 
 
-    private Object[] invokeWSParameters(byte[] m, Method method, WSEndpoint endpoint) {
+    private Object[] invokeWSParameters(byte[] payload, Method method, WSEndpoint endpoint) {
         final java.lang.reflect.Parameter[] parameters = method.getParameters();
         final Object[] parameterResult = new Object[parameters.length];
         final Consumes consumes = method.getDeclaredAnnotation(Consumes.class);
         int i = 0;
 
         for (java.lang.reflect.Parameter p : parameters) {
-            // TODO remove all but WSHandler and else
-            if (p.getType().equals(WSResponse.class)) {
-                parameterResult[i] = new WSResponse(endpoint, this.vertx.eventBus(), this.getConfig());
-            }
-            if (p.getType().equals(WSByteResponse.class)) {
-                parameterResult[i] = new WSByteResponse(endpoint, this.vertx.eventBus());
-            }
-            if (p.getType().equals(WSStringResponse.class)) {
-                parameterResult[i] = new WSStringResponse(endpoint, this.vertx.eventBus());
-            }
             if (p.getType().equals(WSHandler.class)) {
-                parameterResult[i] = new WSHandler((WSRegistry) wsHandler,endpoint, this.vertx.eventBus());
+                parameterResult[i] = new WSHandler(wsHandler, endpoint, payload, this.vertx);
             } else {
-                putTypedWSParameter(consumes, parameterResult, p, i, m);
+                putTypedWSParameter(consumes, parameterResult, p, i, payload);
             }
 
             i++;
@@ -289,15 +277,13 @@ public abstract class VertxServiceEndpoint extends AbstractVerticle {
     private List<String> getWSParameter(Method method) {
         final Class<?>[] parameterTypes = method.getParameterTypes();
         // TODO, instead of returning the class names of the parameter return a json representation if methods @Consumes annotation defines application/json. Be aware of String, Integer....
-        final List<Class> classes = Stream.of(parameterTypes).
-                filter(c -> !c.equals(WSResponse.class)).
-                filter(c1 -> !c1.equals(WSByteResponse.class)).
-                filter(c2 -> !c2.equals(WSStringResponse.class)).
-                filter(c3 -> !c3.equals(WSHandler.class)).  // TODO this should be the only one
+        final List<String> classes = Stream.of(parameterTypes).
+                filter(component -> !component.equals(WSHandler.class)).  // TODO this should be the only one
+                map(Class::getName).
                 collect(Collectors.toList());
         if (classes.size() > 1)
             throw new IllegalArgumentException("only one parameter is allowed -- the message body -- and/or the WSResponse");
-        return classes.stream().map(Class::getName).collect(Collectors.toList());
+        return classes;
     }
 
 
